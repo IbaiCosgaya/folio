@@ -2,6 +2,18 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 
+const GENRE_STYLES = {
+  fantasia:       { color: 'bg-purple-500',  icon: '🔮' },
+  ciencia_ficcion:{ color: 'bg-blue-500',    icon: '🚀' },
+  thriller:       { color: 'bg-red-500',     icon: '🔪' },
+  romance:        { color: 'bg-pink-500',    icon: '💕' },
+  historica:      { color: 'bg-yellow-600',  icon: '⚔️' },
+  terror:         { color: 'bg-orange-600',  icon: '👻' },
+  no_ficcion:     { color: 'bg-teal-500',    icon: '📚' },
+  autobiografia:  { color: 'bg-green-500',   icon: '✍️' },
+  otro:           { color: 'bg-stone-500',   icon: '📖' },
+}
+
 function Home() {
   const [books, setBooks] = useState([])
   const navigate = useNavigate()
@@ -60,11 +72,15 @@ function Home() {
                     {Math.round((book.current_page / book.total_pages) * 100)}%
                   </span>
                 </div>
-                <div className="w-full bg-stone-800 rounded-full h-1.5">
+                <div className="w-full bg-stone-800 rounded-full h-2 relative">
                   <div
-                    className="bg-amber-500 h-1.5 rounded-full transition-all"
-                    style={{ width: `${(book.current_page / book.total_pages) * 100}%` }}
-                  />
+                    className={`${GENRE_STYLES[book.genre]?.color || 'bg-amber-500'} h-2 rounded-full transition-all relative`}
+                    style={{ width: `${Math.max((book.current_page / book.total_pages) * 100, 2)}%` }}
+                  >
+                    <span className="absolute -right-4 -top-4 text-2xl">
+                      {GENRE_STYLES[book.genre]?.icon || '📖'}
+                    </span>
+                  </div>
                 </div>
                 <p className="text-stone-500 text-xs mt-2">
                   Página {book.current_page} de {book.total_pages}
