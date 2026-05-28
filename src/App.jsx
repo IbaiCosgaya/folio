@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Login from './pages/Login'
 import Home from './pages/Home'
 import Profile from './pages/Profile'
+import AddBook from './pages/AddBook'
+import ReadingSession from './pages/ReadingSession'
 
 function App() {
   return (
@@ -10,6 +12,8 @@ function App() {
         <Route path="/" element={<Login />} />
         <Route path="/home" element={<Home />} />
         <Route path="/profile" element={<Profile />} />
+        <Route path="/add-book" element={<AddBook />} />
+        <Route path="/reading/:id" element={<ReadingSession />} />
       </Routes>
     </BrowserRouter>
   )
