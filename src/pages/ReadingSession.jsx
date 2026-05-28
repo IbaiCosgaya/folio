@@ -5,6 +5,7 @@ import { supabase } from '../supabase'
 function ReadingSession() {
   const [book, setBook] = useState(null)
   const [currentPage, setCurrentPage] = useState('')
+  const [minutes, setMinutes] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
   const { id } = useParams()
@@ -24,11 +25,25 @@ function ReadingSession() {
   async function handleUpdate() {
     if (!currentPage) return
     setLoading(true)
-    const { error } = await supabase
-      .from('books')
-      .update({ current_page: parseInt(currentPage) })
-      .eq('id', id)
-    if (!error) navigate('/home')
+
+    const { data: { user } } = await supabase.auth.getUser()
+    const pagesRead = parseInt(currentPage) - book.current_page
+
+    await supabase.from('books').update({
+      current_page: parseInt(currentPage)
+    }).eq('id', id)
+
+    if (pagesRead > 0) {
+      await supabase.from('reading_sessions').insert({
+        user_id: user.id,
+        book_id: parseInt(id),
+        pages_read: pagesRead,
+        minutes_read: minutes ? parseInt(minutes) : null,
+        date: new Date().toISOString().split('T')[0]
+      })
+    }
+
+    navigate('/home')
     setLoading(false)
   }
 
@@ -73,6 +88,15 @@ function ReadingSession() {
           onChange={e => setCurrentPage(e.target.value)}
           max={book.total_pages}
           className="w-full bg-stone-900 text-white placeholder-stone-500 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-amber-500 mb-4"
+        />
+
+        <p className="text-stone-400 text-sm mb-2">¿Cuántos minutos has leído? (opcional)</p>
+        <input
+          type="number"
+          placeholder="ej. 45"
+          value={minutes}
+          onChange={e => setMinutes(e.target.value)}
+          className="w-full bg-stone-900 text-white placeholder-stone-500 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-amber-500 mb-6"
         />
 
         <button
