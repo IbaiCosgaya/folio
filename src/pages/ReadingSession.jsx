@@ -29,9 +29,17 @@ function ReadingSession() {
     const { data: { user } } = await supabase.auth.getUser()
     const pagesRead = parseInt(currentPage) - book.current_page
 
+    const finished = parseInt(currentPage) >= book.total_pages
+
     await supabase.from('books').update({
-      current_page: parseInt(currentPage)
+    current_page: parseInt(currentPage),
+    finished: finished
     }).eq('id', id)
+
+    if (finished) {
+    navigate('/home')
+    return
+    }
 
     if (pagesRead > 0) {
       await supabase.from('reading_sessions').insert({

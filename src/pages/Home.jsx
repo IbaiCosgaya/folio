@@ -16,6 +16,7 @@ const GENRE_STYLES = {
 
 function Home() {
   const [books, setBooks] = useState([])
+  const [finishedBooks, setFinishedBooks] = useState([])
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -24,7 +25,10 @@ function Home() {
 
   async function fetchBooks() {
     const { data } = await supabase.from('books').select('*')
-    if (data) setBooks(data)
+    if (data) {
+      setBooks(data.filter(b => !b.finished))
+      setFinishedBooks(data.filter(b => b.finished))
+    }
   }
 
   async function handleLogout() {
@@ -98,7 +102,7 @@ function Home() {
                   className="mt-3 w-full bg-amber-500 hover:bg-amber-400 text-stone-950 font-semibold rounded-xl py-2 text-sm transition-colors"
                 >
                   Registrar lectura
-              </button>
+                </button>
               </div>
             ))}
             <button
@@ -109,8 +113,25 @@ function Home() {
             </button>
           </div>
         )}
-      </div>
 
+        {finishedBooks.length > 0 && (
+          <div className="mt-8">
+            <p className="text-stone-400 text-sm mb-3">Libros terminados ✅</p>
+            <div className="space-y-3">
+              {finishedBooks.map(book => (
+                <div key={book.id} className="bg-stone-900 rounded-2xl p-4 border border-stone-800 flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold text-white">{book.title}</h3>
+                    <p className="text-stone-400 text-sm">{book.author}</p>
+                  </div>
+                  <span className="text-2xl">{GENRE_STYLES[book.genre]?.icon || '📖'}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+      </div>
     </div>
   )
 }
