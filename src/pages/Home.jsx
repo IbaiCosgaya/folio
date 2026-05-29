@@ -36,7 +36,15 @@ function Home() {
     <div className="min-h-screen bg-stone-950 text-white">
 
       <div className="flex items-center justify-between px-6 py-4 border-b border-stone-800">
-        <h1 className="text-xl font-bold tracking-tight">folio</h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-xl font-bold tracking-tight">folio</h1>
+          <button
+            onClick={() => navigate('/profile')}
+            className="text-stone-400 hover:text-white text-sm transition-colors"
+          >
+            Estadísticas
+          </button>
+        </div>
         <button
           onClick={handleLogout}
           className="text-stone-400 hover:text-white text-sm transition-colors"
