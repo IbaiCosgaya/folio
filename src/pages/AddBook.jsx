@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 import { useNavigate } from 'react-router-dom'
 
@@ -15,12 +15,69 @@ const GENRES = [
 ]
 
 function AddBook() {
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState([])
+  const [searching, setSearching] = useState(false)
+  const [selected, setSelected] = useState(null)
+  const [manual, setManual] = useState(false)
   const [title, setTitle] = useState('')
   const [author, setAuthor] = useState('')
   const [totalPages, setTotalPages] = useState('')
   const [genre, setGenre] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (query.length > 2) {
+  setSearching(true)
+  fetch(`https://openlibrary.org/search.json?title=${encodeURIComponent(query)}&limit=5`)
+    .then(r => r.json())
+    .then(data => {
+      const books = data.docs.map(b => ({
+        title: b.title,
+        author: b.author_name?.[0] || 'Autor desconocido',
+        pages: b.number_of_pages_median || null,
+        cover: b.cover_i ? `https://covers.openlibrary.org/b/id/${b.cover_i}-M.jpg` : null
+      }))
+      setResults(books)
+      setSearching(false)
+    })
+}
+    }, 500)
+    return () => clearTimeout(timer)
+    }, [query])
+
+  async function handleSearch() {
+    if (!query) return
+    setSearching(true)
+    setResults([])
+    const res = await fetch(`https://openlibrary.org/search.json?title=${encodeURIComponent(query)}&limit=5`)
+    const data = await res.json()
+    const books = data.docs.map(b => ({
+      title: b.title,
+      author: b.author_name?.[0] || 'Autor desconocido',
+      pages: b.number_of_pages_median || null,
+      cover: b.cover_i ? `https://covers.openlibrary.org/b/id/${b.cover_i}-M.jpg` : null
+    }))
+    setResults(books)
+    setSearching(false)
+  }
+
+  function handleSelect(book) {
+    setSelected(book)
+    setTitle(book.title)
+    setAuthor(book.author)
+    setTotalPages(book.pages || '')
+    setResults([])
+    setQuery('')
+  }
+
+  function handleManual() {
+    setManual(true)
+    setSelected(null)
+    setResults([])
+    setQuery('')
+  }
 
   async function handleAddBook() {
     if (!title || !author || !totalPages || !genre) return
@@ -34,7 +91,8 @@ function AddBook() {
       author,
       total_pages: parseInt(totalPages),
       current_page: 0,
-      genre
+      genre,
+      cover_url: selected?.cover || null
     })
 
     if (!error) navigate('/home')
@@ -52,56 +110,134 @@ function AddBook() {
       </div>
 
       <div className="px-6 py-8 space-y-4">
-        <input
-          type="text"
-          placeholder="Título del libro"
-          value={title}
-          onChange={e => setTitle(e.target.value)}
-          className="w-full bg-stone-900 text-white placeholder-stone-500 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-amber-500"
-        />
-        <input
-          type="text"
-          placeholder="Autor"
-          value={author}
-          onChange={e => setAuthor(e.target.value)}
-          className="w-full bg-stone-900 text-white placeholder-stone-500 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-amber-500"
-        />
-        <input
-          type="number"
-          placeholder="Número de páginas"
-          value={totalPages}
-          onChange={e => setTotalPages(e.target.value)}
-          className="w-full bg-stone-900 text-white placeholder-stone-500 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-amber-500"
-        />
 
-        <div>
-          <p className="text-stone-400 text-sm mb-3">Género</p>
-          <div className="grid grid-cols-3 gap-2">
-            {GENRES.map(g => (
+        {!selected && !manual && (
+          <>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Buscar libro por título..."
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                className="flex-1 bg-stone-900 text-white placeholder-stone-500 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-amber-500"
+              />
               <button
-                key={g.value}
-                onClick={() => setGenre(g.value)}
-                className={`py-2 px-3 rounded-xl text-sm font-medium transition-colors ${
-                  genre === g.value
-                    ? 'bg-amber-500 text-stone-950'
-                    : 'bg-stone-900 text-stone-400 hover:bg-stone-800'
-                }`}
+                onClick={handleSearch}
+                className="bg-amber-500 hover:bg-amber-400 text-stone-950 font-semibold rounded-xl px-4 py-3 transition-colors"
               >
-                {g.label}
+                {searching ? '...' : 'Buscar'}
               </button>
-            ))}
-          </div>
-        </div>
+            </div>
 
-        <button
-          onClick={handleAddBook}
-          disabled={loading || !genre}
-          className="w-full bg-amber-500 hover:bg-amber-400 text-stone-950 font-semibold rounded-xl py-3 transition-colors disabled:opacity-50"
-        >
-          {loading ? 'Guardando...' : 'Guardar libro'}
-        </button>
+            {results.length > 0 && (
+              <div className="space-y-2">
+                {results.map((book, i) => (
+                  <div
+                    key={i}
+                    onClick={() => handleSelect(book)}
+                    className="flex items-center gap-3 bg-stone-900 rounded-xl p-3 border border-stone-800 cursor-pointer hover:border-amber-500 transition-colors"
+                  >
+                    {book.cover ? (
+                      <img src={book.cover} alt={book.title} className="w-10 h-14 object-cover rounded" />
+                    ) : (
+                      <div className="w-10 h-14 bg-stone-800 rounded flex items-center justify-center text-xl">📖</div>
+                    )}
+                    <div>
+                      <p className="font-semibold text-sm">{book.title}</p>
+                      <p className="text-stone-400 text-xs">{book.author}</p>
+                      {book.pages && <p className="text-stone-500 text-xs">{book.pages} páginas</p>}
+                    </div>
+                  </div>
+                ))}
+                <button
+                  onClick={handleManual}
+                  className="w-full text-stone-500 hover:text-amber-500 text-sm py-2 transition-colors"
+                >
+                  No encuentro mi libro → Añadirlo manualmente
+                </button>
+              </div>
+            )}
+
+            {results.length === 0 && query && !searching && (
+              <button
+                onClick={handleManual}
+                className="w-full text-stone-500 hover:text-amber-500 text-sm py-2 transition-colors"
+              >
+                No encuentro mi libro → Añadirlo manualmente
+              </button>
+            )}
+          </>
+        )}
+
+        {(selected || manual) && (
+          <>
+            {selected?.cover && (
+              <div className="flex justify-center">
+                <img src={selected.cover} alt={title} className="w-24 rounded-lg shadow-lg" />
+              </div>
+            )}
+
+            <input
+              type="text"
+              placeholder="Título del libro"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              className="w-full bg-stone-900 text-white placeholder-stone-500 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-amber-500"
+            />
+            <input
+              type="text"
+              placeholder="Autor"
+              value={author}
+              onChange={e => setAuthor(e.target.value)}
+              className="w-full bg-stone-900 text-white placeholder-stone-500 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-amber-500"
+            />
+            <input
+              type="number"
+              placeholder="Número de páginas"
+              value={totalPages}
+              onChange={e => setTotalPages(e.target.value)}
+              className="w-full bg-stone-900 text-white placeholder-stone-500 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-amber-500"
+            />
+
+            <div>
+              <p className="text-stone-400 text-sm mb-3">Género</p>
+              <div className="grid grid-cols-3 gap-2">
+                {GENRES.map(g => (
+                  <button
+                    key={g.value}
+                    onClick={() => setGenre(g.value)}
+                    className={`py-2 px-3 rounded-xl text-sm font-medium transition-colors ${
+                      genre === g.value
+                        ? 'bg-amber-500 text-stone-950'
+                        : 'bg-stone-900 text-stone-400 hover:bg-stone-800'
+                    }`}
+                  >
+                    {g.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setSelected(null); setManual(false); setTitle(''); setAuthor(''); setTotalPages(''); setGenre('') }}
+                className="flex-1 border border-stone-800 text-stone-400 font-semibold rounded-xl py-3 text-sm transition-colors hover:border-stone-600"
+              >
+                ← Volver a buscar
+              </button>
+              <button
+                onClick={handleAddBook}
+                disabled={loading || !genre || !title || !author || !totalPages}
+                className="flex-1 bg-amber-500 hover:bg-amber-400 text-stone-950 font-semibold rounded-xl py-3 transition-colors disabled:opacity-50"
+              >
+                {loading ? 'Guardando...' : 'Guardar libro'}
+              </button>
+            </div>
+          </>
+        )}
+
       </div>
-
     </div>
   )
 }
