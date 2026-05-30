@@ -6,6 +6,7 @@ const ADMIN_ID = '581dd0d6-6240-461a-90b7-224f74d577ab'
 
 function Admin() {
   const [requests, setRequests] = useState([])
+  const [approvedBooks, setApprovedBooks] = useState([])
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState(null)
   const navigate = useNavigate()
@@ -22,6 +23,7 @@ function Admin() {
     }
     setUser(user)
     fetchRequests()
+    fetchBooks()
   }
 
   async function fetchRequests() {
@@ -33,6 +35,11 @@ function Admin() {
     if (data) setRequests(data)
     setLoading(false)
   }
+
+  async function fetchBooks() {
+  const { data } = await supabase.from('books').select('*').order('created_at', { ascending: false })
+  if (data) setApprovedBooks(data)
+}
 
   async function handleApprove(request) {
     await supabase.from('books').insert({
@@ -53,6 +60,12 @@ function Admin() {
     await supabase.from('book_requests').update({ status: 'rejected' }).eq('id', id)
     setRequests(r => r.filter(x => x.id !== id))
   }
+
+  async function handleDeleteBook(bookId) {
+  if (!confirm('¿Seguro que quieres eliminar este libro de la base de datos?')) return
+  await supabase.from('reading_sessions').delete().eq('book_id', bookId)
+  await supabase.from('books').delete().eq('id', bookId)
+}
 
   if (loading) return <div className="min-h-screen bg-stone-950 flex items-center justify-center text-white">Cargando...</div>
 
@@ -102,6 +115,25 @@ function Admin() {
             </div>
           ))
         )}
+        <div className="mt-10">
+          <p className="text-stone-400 text-sm mb-3">Libros en la base de datos</p>
+          <div className="space-y-3">
+            {approvedBooks.map(book => (
+              <div key={book.id} className="bg-stone-900 rounded-2xl p-4 border border-stone-800 flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-white text-sm">{book.title}</h3>
+                  <p className="text-stone-400 text-xs">{book.author}</p>
+                </div>
+                <button
+                  onClick={() => handleDeleteBook(book.id)}
+                  className="text-red-500 hover:text-red-400 text-xs font-semibold transition-colors"
+                >
+                  Eliminar
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   )

@@ -17,6 +17,7 @@ const GENRE_STYLES = {
 function Home() {
   const [books, setBooks] = useState([])
   const [finishedBooks, setFinishedBooks] = useState([])
+  const [user, setUser] = useState(null)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -24,6 +25,8 @@ function Home() {
   }, [])
 
   async function fetchBooks() {
+    const { data: { user } } = await supabase.auth.getUser()
+    setUser(user)
     const { data } = await supabase.from('books').select('*')
     if (data) {
       setBooks(data.filter(b => !b.finished))
@@ -48,6 +51,14 @@ function Home() {
           >
             Estadísticas
           </button>
+          {user?.id === '581dd0d6-6240-461a-90b7-224f74d577ab' && (
+            <button
+              onClick={() => navigate('/admin')}
+              className="text-amber-500 hover:text-amber-400 text-sm transition-colors"
+            >
+              Moderación
+            </button>
+          )}
         </div>
         <button
           onClick={handleLogout}
