@@ -80,11 +80,12 @@ function AddBook() {
   }
 
   async function handleAddBook() {
-    if (!title || !author || !totalPages || !genre) return
-    setLoading(true)
+  if (!title || !author || !totalPages || !genre) return
+  setLoading(true)
 
-    const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser()
 
+  if (selected) {
     const { error } = await supabase.from('books').insert({
       user_id: user.id,
       title,
@@ -94,10 +95,24 @@ function AddBook() {
       genre,
       cover_url: selected?.cover || null
     })
-
     if (!error) navigate('/home')
-    setLoading(false)
+  } else {
+    const { error } = await supabase.from('book_requests').insert({
+      user_id: user.id,
+      title,
+      author,
+      total_pages: parseInt(totalPages),
+      genre,
+      cover_url: null,
+      status: 'pending'
+    })
+    if (!error) {
+      navigate('/home')
+      alert('Tu libro ha sido enviado para revisión. Lo añadiremos pronto.')
+    }
   }
+  setLoading(false)
+}
 
   return (
     <div className="min-h-screen bg-stone-950 text-white">
@@ -231,7 +246,7 @@ function AddBook() {
                 disabled={loading || !genre || !title || !author || !totalPages}
                 className="flex-1 bg-amber-500 hover:bg-amber-400 text-stone-950 font-semibold rounded-xl py-3 transition-colors disabled:opacity-50"
               >
-                {loading ? 'Guardando...' : 'Guardar libro'}
+                {loading ? 'Guardando...' : selected ? 'Guardar libro' : 'Enviar para revisión'}
               </button>
             </div>
           </>

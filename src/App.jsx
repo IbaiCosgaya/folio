@@ -4,6 +4,7 @@ import Home from './pages/Home'
 import Profile from './pages/Profile'
 import AddBook from './pages/AddBook'
 import ReadingSession from './pages/ReadingSession'
+import Admin from './pages/Admin'
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
         <Route path="/profile" element={<Profile />} />
         <Route path="/add-book" element={<AddBook />} />
         <Route path="/reading/:id" element={<ReadingSession />} />
+        <Route path="/admin" element={<Admin />} />
       </Routes>
     </BrowserRouter>
   )
