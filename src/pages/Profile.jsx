@@ -23,6 +23,8 @@ function Profile() {
   const [sessions, setSessions] = useState([])
   const [editing, setEditing] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth())
+  const [calendarYear, setCalendarYear] = useState(new Date().getFullYear())
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -88,16 +90,6 @@ function Profile() {
     return streak
   }
 
-  function getLast30Days() {
-    const days = []
-    for (let i = 29; i >= 0; i--) {
-      const d = new Date()
-      d.setDate(d.getDate() - i)
-      days.push(d.toISOString().split('T')[0])
-    }
-    return days
-  }
-
   async function handleSaveUsername() {
     const { data: { user } } = await supabase.auth.getUser()
     await supabase.from('profiles').upsert({ id: user.id, username })
@@ -107,12 +99,24 @@ function Profile() {
 
   if (loading) return <div className="min-h-screen bg-stone-950 flex items-center justify-center text-white">Cargando...</div>
 
-  const days = getLast30Days()
   const sessionsByDate = {}
   sessions.forEach(s => {
     if (!sessionsByDate[s.date]) sessionsByDate[s.date] = []
     sessionsByDate[s.date].push(s)
   })
+
+  const calendarDays = (() => {
+    const firstDay = new Date(calendarYear, calendarMonth, 1).getDay()
+    const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate()
+    const offset = firstDay === 0 ? 6 : firstDay - 1
+    const days = []
+    for (let i = 0; i < offset; i++) days.push(null)
+    for (let i = 1; i <= daysInMonth; i++) {
+      const d = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`
+      days.push(d)
+    }
+    return days
+  })()
 
   return (
     <div className="min-h-screen bg-stone-950 text-white">
@@ -193,25 +197,66 @@ function Profile() {
             )}
 
             <div>
-              <p className="text-stone-400 text-sm mb-3">Últimos 30 días</p>
-              <div className="grid grid-cols-10 gap-1">
-                {days.map(day => {
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-stone-400 text-sm">Actividad de lectura</p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCalendarMonth(m => m - 1)}
+                    className="text-stone-400 hover:text-white text-sm transition-colors px-2"
+                  >
+                    ←
+                  </button>
+                  <span className="text-stone-300 text-sm font-medium w-28 text-center">
+                    {new Date(calendarYear, calendarMonth).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
+                  </span>
+                  <button
+                    onClick={() => setCalendarMonth(m => m + 1)}
+                    className="text-stone-400 hover:text-white text-sm transition-colors px-2"
+                    disabled={calendarMonth >= new Date().getMonth() && calendarYear >= new Date().getFullYear()}
+                  >
+                    →
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-7 gap-1 mb-1">
+                {['L','M','X','J','V','S','D'].map(d => (
+                  <div key={d} className="text-center text-stone-600 text-xs py-1">{d}</div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-7 gap-1">
+                {calendarDays.map((day, i) => {
+                  if (!day) return <div key={`empty-${i}`} />
                   const daySessions = sessionsByDate[day] || []
                   const hasReading = daySessions.length > 0
                   const genre = daySessions[0]?.books?.genre
                   const colorClass = genre ? GENRE_COLORS[genre] : ''
+                  const dayNum = parseInt(day.split('-')[2])
+                  const isToday = day === new Date().toISOString().split('T')[0]
                   return (
                     <div
                       key={day}
-                      title={day}
-                      className={`aspect-square rounded-md ${hasReading ? colorClass || 'bg-amber-500' : 'bg-stone-800'}`}
-                    />
+                      title={`${day}${hasReading ? ` · ${daySessions.reduce((s,x) => s + x.pages_read, 0)} páginas` : ''}`}
+                      className={`aspect-square rounded-md flex items-center justify-center text-xs font-medium transition-all
+                        ${hasReading ? colorClass || 'bg-amber-500' : 'bg-stone-800'}
+                        ${isToday ? 'ring-2 ring-amber-400' : ''}
+                        ${hasReading ? 'text-white' : 'text-stone-600'}
+                      `}
+                    >
+                      {dayNum}
+                    </div>
                   )
                 })}
               </div>
-              <div className="flex justify-between mt-1">
-                <span className="text-stone-600 text-xs">hace 30 días</span>
-                <span className="text-stone-600 text-xs">hoy</span>
+
+              <div className="flex items-center gap-3 mt-3 flex-wrap">
+                {Object.entries(GENRE_COLORS).map(([genre, color]) => (
+                  <div key={genre} className="flex items-center gap-1">
+                    <div className={`w-2.5 h-2.5 rounded-sm ${color}`} />
+                    <span className="text-stone-500 text-xs">{GENRE_LABELS[genre]?.split(' ').slice(1).join(' ')}</span>
+                  </div>
+                ))}
               </div>
             </div>
           </>
