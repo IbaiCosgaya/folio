@@ -17,15 +17,6 @@ function Login() {
     }
   }
 
-  async function handleRegister() {
-  const { error } = await supabase.auth.signUp({ email, password })
-  if (error) {
-    setError(error.message)
-  } else {
-    setError('Revisa tu email para confirmar la cuenta')
-  }
-}
-
   return (
     <div className="min-h-screen bg-stone-950 flex items-center justify-center">
       <div className="w-full max-w-sm px-6">
@@ -62,7 +53,10 @@ function Login() {
 
         <p className="text-center text-stone-500 text-sm mt-6">
           ¿No tienes cuenta?{' '}
-          <span onClick={handleRegister} className="text-amber-500 cursor-pointer hover:underline">
+          <span
+            onClick={() => navigate('/register')}
+            className="text-amber-500 cursor-pointer hover:underline"
+          >
             Regístrate
           </span>
         </p>

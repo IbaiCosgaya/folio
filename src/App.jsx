@@ -5,12 +5,14 @@ import Profile from './pages/Profile'
 import AddBook from './pages/AddBook'
 import ReadingSession from './pages/ReadingSession'
 import Admin from './pages/Admin'
+import Register from './pages/Register'
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Login />} />
+        <Route path="/register" element={<Register />} />
         <Route path="/home" element={<Home />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/add-book" element={<AddBook />} />
