@@ -3,15 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 
 const GENRE_STYLES = {
-  fantasia:       { color: 'bg-purple-500',  icon: '🔮' },
-  ciencia_ficcion:{ color: 'bg-blue-500',    icon: '🚀' },
-  thriller:       { color: 'bg-red-500',     icon: '🔪' },
-  romance:        { color: 'bg-pink-500',    icon: '💕' },
-  historica:      { color: 'bg-yellow-600',  icon: '⚔️' },
-  terror:         { color: 'bg-orange-600',  icon: '👻' },
-  no_ficcion:     { color: 'bg-teal-500',    icon: '📚' },
-  autobiografia:  { color: 'bg-green-500',   icon: '✍️' },
-  otro:           { color: 'bg-stone-500',   icon: '📖' },
+  fantasia:        { color: 'bg-purple-500',   icon: '🔮' },
+  ciencia_ficcion: { color: 'bg-blue-500',     icon: '🚀' },
+  thriller:        { color: 'bg-red-500',      icon: '🔪' },
+  romance:         { color: 'bg-pink-500',     icon: '💕' },
+  historica:       { color: 'bg-yellow-600',   icon: '⚔️' },
+  terror:          { color: 'bg-orange-600',   icon: '👻' },
+  no_ficcion:      { color: 'bg-teal-500',     icon: '📚' },
+  autobiografia:   { color: 'bg-green-500',    icon: '✍️' },
+  otro:            { color: 'bg-stone-500',    icon: '📖' },
 }
 
 function Home() {
@@ -102,14 +102,29 @@ function Home() {
           <div className="space-y-4">
             {books.map(book => (
               <div key={book.id} className="bg-stone-900 rounded-2xl p-5 border border-stone-800">
-                <div className="flex justify-between items-start mb-3">
-                  <div>
+                <div className="flex gap-4 mb-3">
+                  <div className="relative flex-shrink-0">
+                    {book.cover_url ? (
+                      <img
+                        src={book.cover_url}
+                        alt={book.title}
+                        className="w-16 h-24 object-cover rounded-lg shadow-lg"
+                      />
+                    ) : (
+                      <div className={`w-16 h-24 rounded-lg flex items-center justify-center text-3xl ${GENRE_STYLES[book.genre]?.color || 'bg-stone-700'}`}>
+                        {GENRE_STYLES[book.genre]?.icon || '📖'}
+                      </div>
+                    )}
+                    <div className="absolute bottom-1 right-1 bg-black bg-opacity-70 rounded-md px-1.5 py-0.5">
+                      <span className="text-white text-xs font-bold">
+                        {Math.round((book.current_page / book.total_pages) * 100)}%
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex-1">
                     <h3 className="font-semibold text-white">{book.title}</h3>
                     <p className="text-stone-400 text-sm">{book.author}</p>
                   </div>
-                  <span className="text-amber-500 font-bold text-sm">
-                    {Math.round((book.current_page / book.total_pages) * 100)}%
-                  </span>
                 </div>
                 
                 {/* Barra de Progreso */}
@@ -151,12 +166,27 @@ function Home() {
             <p className="text-stone-400 text-sm mb-3">Libros terminados ✅</p>
             <div className="space-y-3">
               {finishedBooks.map(book => (
-                <div key={book.id} className="bg-stone-900 rounded-2xl p-4 border border-stone-800 flex items-center justify-between">
+                <div key={book.id} className="bg-stone-900 rounded-2xl p-4 border border-stone-800 flex items-center gap-4">
+                  <div className="relative flex-shrink-0">
+                    {book.cover_url ? (
+                      <img
+                        src={book.cover_url}
+                        alt={book.title}
+                        className="w-12 h-18 object-cover rounded-lg shadow-lg"
+                      />
+                    ) : (
+                      <div className={`w-12 h-18 rounded-lg flex items-center justify-center text-2xl ${GENRE_STYLES[book.genre]?.color || 'bg-stone-700'}`}>
+                        {GENRE_STYLES[book.genre]?.icon || '📖'}
+                      </div>
+                    )}
+                    <div className="absolute bottom-1 right-1 bg-black bg-opacity-70 rounded-md px-1 py-0.5">
+                      <span className="text-white text-xs font-bold">100%</span>
+                    </div>
+                  </div>
                   <div>
                     <h3 className="font-semibold text-white">{book.title}</h3>
                     <p className="text-stone-400 text-sm">{book.author}</p>
                   </div>
-                  <span className="text-2xl">{GENRE_STYLES[book.genre]?.icon || '📖'}</span>
                 </div>
               ))}
             </div>
