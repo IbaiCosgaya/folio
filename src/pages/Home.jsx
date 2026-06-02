@@ -42,15 +42,10 @@ function Home() {
   return (
     <div className="min-h-screen bg-stone-950 text-white">
 
+      {/* Nuevo Header / Navbar */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-stone-800">
+        <h1 className="text-xl font-bold tracking-tight">folio</h1>
         <div className="flex items-center gap-4">
-          <h1 className="text-xl font-bold tracking-tight">folio</h1>
-          <button
-            onClick={() => navigate('/profile')}
-            className="text-stone-400 hover:text-white text-sm transition-colors"
-          >
-            Estadísticas
-          </button>
           {user?.id === '581dd0d6-6240-461a-90b7-224f74d577ab' && (
             <button
               onClick={() => navigate('/admin')}
@@ -59,19 +54,40 @@ function Home() {
               Moderación
             </button>
           )}
+          <button
+            onClick={handleLogout}
+            className="text-stone-400 hover:text-white text-sm transition-colors"
+          >
+            Salir
+          </button>
         </div>
+      </div>
+
+      {/* Nuevos Tabs de Navegación */}
+      <div className="flex border-b border-stone-800">
+        <button className="flex-1 py-3 text-sm font-semibold text-white border-b-2 border-amber-500">
+          Inicio
+        </button>
         <button
-          onClick={handleLogout}
-          className="text-stone-400 hover:text-white text-sm transition-colors"
+          onClick={() => navigate('/stats')}
+          className="flex-1 py-3 text-sm font-semibold text-stone-400 hover:text-white transition-colors"
         >
-          Salir
+          Estadísticas
+        </button>
+        <button
+          onClick={() => navigate('/profile')}
+          className="flex-1 py-3 text-sm font-semibold text-stone-400 hover:text-white transition-colors"
+        >
+          Perfil
         </button>
       </div>
 
+      {/* Contenido Principal */}
       <div className="px-6 py-8">
         <h2 className="text-2xl font-semibold mb-1">Hola 👋</h2>
         <p className="text-stone-400 text-sm mb-8">¿Qué estás leyendo hoy?</p>
 
+        {/* Listado de Libros Activos */}
         {books.length === 0 ? (
           <div className="bg-stone-900 rounded-2xl p-6 text-center border border-stone-800">
             <p className="text-stone-400 text-sm">No tienes libros en curso</p>
@@ -95,6 +111,8 @@ function Home() {
                     {Math.round((book.current_page / book.total_pages) * 100)}%
                   </span>
                 </div>
+                
+                {/* Barra de Progreso */}
                 <div className="w-full bg-stone-800 rounded-full h-2 relative">
                   <div
                     className={`${GENRE_STYLES[book.genre]?.color || 'bg-amber-500'} h-2 rounded-full transition-all relative`}
@@ -105,6 +123,7 @@ function Home() {
                     </span>
                   </div>
                 </div>
+                
                 <p className="text-stone-500 text-xs mt-2">
                   Página {book.current_page} de {book.total_pages}
                 </p>
@@ -116,6 +135,7 @@ function Home() {
                 </button>
               </div>
             ))}
+            
             <button
               onClick={() => navigate('/add-book')}
               className="w-full border border-stone-800 hover:border-amber-500 text-stone-400 hover:text-amber-500 font-semibold rounded-xl py-3 text-sm transition-colors"
@@ -125,6 +145,7 @@ function Home() {
           </div>
         )}
 
+        {/* Listado de Libros Terminados */}
         {finishedBooks.length > 0 && (
           <div className="mt-8">
             <p className="text-stone-400 text-sm mb-3">Libros terminados ✅</p>
