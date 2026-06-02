@@ -39,6 +39,11 @@ function Home() {
     navigate('/')
   }
 
+  async function handleRating(bookId, rating) {
+    await supabase.from('books').update({ rating }).eq('id', bookId)
+    setFinishedBooks(books => books.map(b => b.id === bookId ? { ...b, rating } : b))
+  }
+
   return (
     <div className="min-h-screen bg-stone-950 text-white">
 
@@ -183,9 +188,24 @@ function Home() {
                       <span className="text-white text-xs font-bold">100%</span>
                     </div>
                   </div>
-                  <div>
+                  <div className="flex-1">
                     <h3 className="font-semibold text-white">{book.title}</h3>
-                    <p className="text-stone-400 text-sm">{book.author}</p>
+                    <p className="text-stone-400 text-sm mb-2">{book.author}</p>
+                    <div className="flex gap-1">
+                      {[1, 2, 3, 4, 5].map(star => (
+                        <button
+                          key={star}
+                          onClick={() => handleRating(book.id, star)}
+                          className={`text-xl transition-colors ${
+                            star <= (book.rating || 0) 
+                              ? 'text-amber-500' 
+                              : 'text-stone-700 hover:text-amber-400'
+                          }`}
+                        >
+                          ★
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               ))}
