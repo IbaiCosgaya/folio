@@ -37,9 +37,9 @@ function ReadingSession() {
     }).eq('id', id)
 
     if (finished) {
-      navigate('/home')
+      navigate(`/notes/${id}`)
       return
-    }
+    }   
 
     if (pagesRead > 0) {
       await supabase.from('reading_sessions').insert({

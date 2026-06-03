@@ -41,9 +41,9 @@ function Home() {
   }
 
   async function handleRating(bookId, rating) {
-  await supabase.from('books').update({ rating }).eq('id', bookId)
-  setFinishedBooks(books => books.map(b => b.id === bookId ? { ...b, rating } : b))
-  setEditingRating(null)
+    await supabase.from('books').update({ rating }).eq('id', bookId)
+    setFinishedBooks(prevFinished => prevFinished.map(b => b.id === bookId ? { ...b, rating } : b))
+    setEditingRating(null)
   }
 
   return (
@@ -202,40 +202,49 @@ function Home() {
                     <h3 className="font-semibold text-white">{book.title}</h3>
                     <p className="text-stone-400 text-sm mb-2">{book.author}</p>
                     <div className="flex items-center gap-2">
-                    <div className="flex gap-1">
-                      {[1,2,3,4,5].map(star => (
+                      <div className="flex gap-1">
+                        {[1, 2, 3, 4, 5].map(star => (
+                          <button
+                            key={star}
+                            onClick={() => !book.rating || editingRating === book.id ? handleRating(book.id, star) : null}
+                            className={`text-xl transition-colors ${
+                              star <= (book.rating || 0)
+                                ? 'text-amber-500'
+                                : book.rating && editingRating !== book.id
+                                ? 'text-stone-700 cursor-default'
+                                : 'text-stone-700 hover:text-amber-400'
+                            }`}
+                          >
+                            ★
+                          </button>
+                        ))}
+                      </div>
+                      {book.rating && editingRating !== book.id && (
+                        <>
+                          <button
+                            onClick={() => setEditingRating(book.id)}
+                            className="text-stone-600 hover:text-stone-400 text-xs transition-colors"
+                          >
+                            Cambiar
+                          </button>
+                          {/* Botón Mi diario añadido aquí */}
+                          <button
+                            onClick={() => navigate(`/notes/${book.id}`)}
+                            className="text-stone-500 hover:text-amber-500 text-xs transition-colors ml-2"
+                          >
+                            Mi diario
+                          </button>
+                        </>
+                      )}
+                      {editingRating === book.id && (
                         <button
-                          key={star}
-                          onClick={() => !book.rating || editingRating === book.id ? handleRating(book.id, star) : null}
-                          className={`text-xl transition-colors ${
-                            star <= (book.rating || 0)
-                              ? 'text-amber-500'
-                              : book.rating
-                              ? 'text-stone-700 cursor-default'
-                              : 'text-stone-700 hover:text-amber-400'
-                          }`}
+                          onClick={() => setEditingRating(null)}
+                          className="text-stone-600 hover:text-stone-400 text-xs transition-colors"
                         >
-                          ★
+                          Listo
                         </button>
-                      ))}
+                      )}
                     </div>
-                    {book.rating && editingRating !== book.id && (
-                      <button
-                        onClick={() => setEditingRating(book.id)}
-                        className="text-stone-600 hover:text-stone-400 text-xs transition-colors"
-                      >
-                        Cambiar
-                      </button>
-                    )}
-                    {editingRating === book.id && (
-                      <button
-                        onClick={() => setEditingRating(null)}
-                        className="text-stone-600 hover:text-stone-400 text-xs transition-colors"
-                      >
-                        Listo
-                      </button>
-                    )}
-                  </div>
                   </div>
                 </div>
               ))}

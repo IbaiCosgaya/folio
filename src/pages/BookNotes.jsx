@@ -37,9 +37,10 @@ function BookNotes() {
   }
 
   async function handleSaveFinalNote() {
-    setSavingFinal(true)
-    await supabase.from('books').update({ final_note: finalNote }).eq('id', id)
-    setSavingFinal(false)
+  setSavingFinal(true)
+  await supabase.from('books').update({ final_note: finalNote }).eq('id', id)
+  setSavingFinal(false)
+  navigate('/home')
   }
 
   if (loading) return <div className="min-h-screen bg-stone-950 flex items-center justify-center text-white">Cargando...</div>
