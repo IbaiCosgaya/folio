@@ -19,6 +19,7 @@ function Home() {
   const [finishedBooks, setFinishedBooks] = useState([])
   const [user, setUser] = useState(null)
   const navigate = useNavigate()
+  const [editingRating, setEditingRating] = useState(null)
 
   useEffect(() => {
     fetchBooks()
@@ -40,8 +41,9 @@ function Home() {
   }
 
   async function handleRating(bookId, rating) {
-    await supabase.from('books').update({ rating }).eq('id', bookId)
-    setFinishedBooks(books => books.map(b => b.id === bookId ? { ...b, rating } : b))
+  await supabase.from('books').update({ rating }).eq('id', bookId)
+  setFinishedBooks(books => books.map(b => b.id === bookId ? { ...b, rating } : b))
+  setEditingRating(null)
   }
 
   return (
@@ -147,12 +149,20 @@ function Home() {
                 <p className="text-stone-500 text-xs mt-2">
                   Página {book.current_page} de {book.total_pages}
                 </p>
-                <button
-                  onClick={() => navigate(`/reading/${book.id}`)}
-                  className="mt-3 w-full bg-amber-500 hover:bg-amber-400 text-stone-950 font-semibold rounded-xl py-2 text-sm transition-colors"
-                >
-                  Registrar lectura
-                </button>
+                <div className="flex gap-2 mt-3">
+                  <button
+                    onClick={() => navigate(`/reading/${book.id}`)}
+                    className="flex-1 bg-amber-500 hover:bg-amber-400 text-stone-950 font-semibold rounded-xl py-2 text-sm transition-colors"
+                  >
+                    Registrar lectura
+                  </button>
+                  <button
+                    onClick={() => navigate(`/notes/${book.id}`)}
+                    className="border border-stone-800 hover:border-amber-500 text-stone-400 hover:text-amber-500 font-semibold rounded-xl px-4 py-2 text-sm transition-colors"
+                  >
+                    Mi diario
+                  </button>
+                </div>
               </div>
             ))}
             
@@ -191,14 +201,17 @@ function Home() {
                   <div className="flex-1">
                     <h3 className="font-semibold text-white">{book.title}</h3>
                     <p className="text-stone-400 text-sm mb-2">{book.author}</p>
+                    <div className="flex items-center gap-2">
                     <div className="flex gap-1">
-                      {[1, 2, 3, 4, 5].map(star => (
+                      {[1,2,3,4,5].map(star => (
                         <button
                           key={star}
-                          onClick={() => handleRating(book.id, star)}
+                          onClick={() => !book.rating || editingRating === book.id ? handleRating(book.id, star) : null}
                           className={`text-xl transition-colors ${
-                            star <= (book.rating || 0) 
-                              ? 'text-amber-500' 
+                            star <= (book.rating || 0)
+                              ? 'text-amber-500'
+                              : book.rating
+                              ? 'text-stone-700 cursor-default'
                               : 'text-stone-700 hover:text-amber-400'
                           }`}
                         >
@@ -206,6 +219,23 @@ function Home() {
                         </button>
                       ))}
                     </div>
+                    {book.rating && editingRating !== book.id && (
+                      <button
+                        onClick={() => setEditingRating(book.id)}
+                        className="text-stone-600 hover:text-stone-400 text-xs transition-colors"
+                      >
+                        Cambiar
+                      </button>
+                    )}
+                    {editingRating === book.id && (
+                      <button
+                        onClick={() => setEditingRating(null)}
+                        className="text-stone-600 hover:text-stone-400 text-xs transition-colors"
+                      >
+                        Listo
+                      </button>
+                    )}
+                  </div>
                   </div>
                 </div>
               ))}

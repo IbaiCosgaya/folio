@@ -6,6 +6,7 @@ function ReadingSession() {
   const [book, setBook] = useState(null)
   const [currentPage, setCurrentPage] = useState('')
   const [minutes, setMinutes] = useState('')
+  const [note, setNote] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
   const { id } = useParams()
@@ -28,26 +29,26 @@ function ReadingSession() {
 
     const { data: { user } } = await supabase.auth.getUser()
     const pagesRead = parseInt(currentPage) - book.current_page
-
     const finished = parseInt(currentPage) >= book.total_pages
 
     await supabase.from('books').update({
-    current_page: parseInt(currentPage),
-    finished: finished
+      current_page: parseInt(currentPage),
+      finished: finished
     }).eq('id', id)
 
     if (finished) {
-    navigate('/home')
-    return
+      navigate('/home')
+      return
     }
 
     if (pagesRead > 0) {
       await supabase.from('reading_sessions').insert({
         user_id: user.id,
-        book_id: parseInt(id),
+        book_id: parseInt(id), // Pasamos id directamente (si tu DB usa enteros, usa parseInt(id))
         pages_read: pagesRead,
         minutes_read: minutes ? parseInt(minutes) : null,
-        date: new Date().toISOString().split('T')[0]
+        date: new Date().toISOString().split('T')[0],
+        note: note.trim() || null
       })
     }
 
@@ -104,7 +105,17 @@ function ReadingSession() {
           placeholder="ej. 45"
           value={minutes}
           onChange={e => setMinutes(e.target.value)}
-          className="w-full bg-stone-900 text-white placeholder-stone-500 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-amber-500 mb-6"
+          className="w-full bg-stone-900 text-white placeholder-stone-500 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-amber-500 mb-4"
+        />
+
+        {/* Nuevo campo de nota añadido */}
+        <p className="text-stone-400 text-sm mb-2">Nota de hoy (opcional)</p>
+        <textarea
+          placeholder="¿Qué te ha parecido lo que has leído hoy?"
+          value={note}
+          onChange={e => setNote(e.target.value)}
+          rows={3}
+          className="w-full bg-stone-900 text-white placeholder-stone-500 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-amber-500 mb-6 resize-none text-sm"
         />
 
         <button
