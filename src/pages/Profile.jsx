@@ -90,18 +90,24 @@ function Profile() {
       {/* Tabs de Navegación */}
       <div className="flex border-b border-stone-800">
         <button
-          onClick={() => navigate('/home')}
+          onClick={() => navigate('/feed')}
           className="flex-1 py-3 text-sm font-semibold text-stone-400 hover:text-white transition-colors"
         >
           Inicio
         </button>
         <button
-          onClick={() => navigate('/stats')}
+          onClick={() => navigate('/home')}
           className="flex-1 py-3 text-sm font-semibold text-stone-400 hover:text-white transition-colors"
         >
-          Estadísticas
+          Registro
         </button>
         <button className="flex-1 py-3 text-sm font-semibold text-white border-b-2 border-amber-500">
+          Estadísticas
+        </button>
+        <button
+          onClick={() => navigate('/profile')}
+          className="flex-1 py-3 text-sm font-semibold text-stone-400 hover:text-white transition-colors"
+        >
           Perfil
         </button>
       </div>

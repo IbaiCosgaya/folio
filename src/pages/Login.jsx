@@ -13,7 +13,7 @@ function Login() {
     if (error) {
       setError('Email o contraseña incorrectos')
     } else {
-      navigate('/home')
+      navigate('/feed')
     }
   }
 

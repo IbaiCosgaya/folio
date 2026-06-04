@@ -25,27 +25,30 @@ function AddBook() {
   const [totalPages, setTotalPages] = useState('')
   const [genre, setGenre] = useState('')
   const [loading, setLoading] = useState(false)
+  const [year, setYear] = useState('')
   const navigate = useNavigate()
+
   useEffect(() => {
     const timer = setTimeout(() => {
       if (query.length > 2) {
-  setSearching(true)
-  fetch(`https://openlibrary.org/search.json?title=${encodeURIComponent(query)}&limit=5`)
-    .then(r => r.json())
-    .then(data => {
-      const books = data.docs.map(b => ({
-        title: b.title,
-        author: b.author_name?.[0] || 'Autor desconocido',
-        pages: b.number_of_pages_median || null,
-        cover: b.cover_i ? `https://covers.openlibrary.org/b/id/${b.cover_i}-M.jpg` : null
-      }))
-      setResults(books)
-      setSearching(false)
-    })
-}
+        setSearching(true)
+        fetch(`https://openlibrary.org/search.json?title=${encodeURIComponent(query)}&limit=5`)
+          .then(r => r.json())
+          .then(data => {
+            const books = data.docs.map(b => ({
+              title: b.title,
+              author: b.author_name?.[0] || 'Autor desconocido',
+              pages: b.number_of_pages_median || null,
+              cover: b.cover_i ? `https://covers.openlibrary.org/b/id/${b.cover_i}-M.jpg` : null,
+              year: b.first_publish_year || null
+            }))
+            setResults(books)
+            setSearching(false)
+          })
+      }
     }, 500)
     return () => clearTimeout(timer)
-    }, [query])
+  }, [query])
 
   async function handleSearch() {
     if (!query) return
@@ -57,7 +60,8 @@ function AddBook() {
       title: b.title,
       author: b.author_name?.[0] || 'Autor desconocido',
       pages: b.number_of_pages_median || null,
-      cover: b.cover_i ? `https://covers.openlibrary.org/b/id/${b.cover_i}-M.jpg` : null
+      cover: b.cover_i ? `https://covers.openlibrary.org/b/id/${b.cover_i}-M.jpg` : null,
+      year: b.first_publish_year || null
     }))
     setResults(books)
     setSearching(false)
@@ -68,6 +72,7 @@ function AddBook() {
     setTitle(book.title)
     setAuthor(book.author)
     setTotalPages(book.pages || '')
+    setYear(book.year || '')
     setResults([])
     setQuery('')
   }
@@ -80,39 +85,40 @@ function AddBook() {
   }
 
   async function handleAddBook() {
-  if (!title || !author || !totalPages || !genre) return
-  setLoading(true)
+    if (!title || !author || !totalPages || !genre) return
+    setLoading(true)
 
-  const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await supabase.auth.getUser()
 
-  if (selected) {
-    const { error } = await supabase.from('books').insert({
-      user_id: user.id,
-      title,
-      author,
-      total_pages: parseInt(totalPages),
-      current_page: 0,
-      genre,
-      cover_url: selected?.cover || null
-    })
-    if (!error) navigate('/home')
-  } else {
-    const { error } = await supabase.from('book_requests').insert({
-      user_id: user.id,
-      title,
-      author,
-      total_pages: parseInt(totalPages),
-      genre,
-      cover_url: null,
-      status: 'pending'
-    })
-    if (!error) {
-      navigate('/home')
-      alert('Tu libro ha sido enviado para revisión. Lo añadiremos pronto.')
+    if (selected) {
+      const { error } = await supabase.from('books').insert({
+        user_id: user.id,
+        title,
+        author,
+        total_pages: parseInt(totalPages),
+        current_page: 0,
+        genre,
+        cover_url: selected?.cover || null,
+        year: year ? parseInt(year) : null
+      })
+      if (!error) navigate('/home')
+    } else {
+      const { error } = await supabase.from('book_requests').insert({
+        user_id: user.id,
+        title,
+        author,
+        total_pages: parseInt(totalPages),
+        genre,
+        cover_url: null,
+        status: 'pending'
+      })
+      if (!error) {
+        navigate('/home')
+        alert('Tu libro ha sido enviado para revisión. Lo añadiremos pronto.')
+      }
     }
+    setLoading(false)
   }
-  setLoading(false)
-}
 
   return (
     <div className="min-h-screen bg-stone-950 text-white">
@@ -214,6 +220,13 @@ function AddBook() {
               onChange={e => setTotalPages(e.target.value)}
               className="w-full bg-stone-900 text-white placeholder-stone-500 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-amber-500"
             />
+            <input
+              type="number"
+              placeholder="Año de publicación (opcional)"
+              value={year}
+              onChange={e => setYear(e.target.value)}
+              className="w-full bg-stone-900 text-white placeholder-stone-500 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-amber-500"
+            />
 
             <div>
               <p className="text-stone-400 text-sm mb-3">Género</p>
@@ -236,7 +249,7 @@ function AddBook() {
 
             <div className="flex gap-2">
               <button
-                onClick={() => { setSelected(null); setManual(false); setTitle(''); setAuthor(''); setTotalPages(''); setGenre('') }}
+                onClick={() => { setSelected(null); setManual(false); setTitle(''); setAuthor(''); setTotalPages(''); setGenre(''); setYear('') }}
                 className="flex-1 border border-stone-800 text-stone-400 font-semibold rounded-xl py-3 text-sm transition-colors hover:border-stone-600"
               >
                 ← Volver a buscar

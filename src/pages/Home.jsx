@@ -72,8 +72,14 @@ function Home() {
 
       {/* Nuevos Tabs de Navegación */}
       <div className="flex border-b border-stone-800">
-        <button className="flex-1 py-3 text-sm font-semibold text-white border-b-2 border-amber-500">
+        <button
+          onClick={() => navigate('/feed')}
+          className="flex-1 py-3 text-sm font-semibold text-stone-400 hover:text-white transition-colors"
+        >
           Inicio
+        </button>
+        <button className="flex-1 py-3 text-sm font-semibold text-white border-b-2 border-amber-500">
+          Registro
         </button>
         <button
           onClick={() => navigate('/stats')}
@@ -131,6 +137,9 @@ function Home() {
                   <div className="flex-1">
                     <h3 className="font-semibold text-white">{book.title}</h3>
                     <p className="text-stone-400 text-sm">{book.author}</p>
+                    <p className="text-stone-600 text-xs mt-1">
+                      {[GENRE_STYLES[book.genre] ? book.genre.replace('_', ' ') : null, book.year].filter(Boolean).join(' · ')}
+                    </p>
                   </div>
                 </div>
                 
