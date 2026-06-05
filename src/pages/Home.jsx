@@ -71,7 +71,7 @@ function Home() {
       </div>
 
       {/* Nuevos Tabs de Navegación */}
-      <div className="flex border-b border-stone-800">
+      <div className="flex border-b border-stone-800 sticky top-0 z-10 bg-stone-950">
         <button
           onClick={() => navigate('/feed')}
           className="flex-1 py-3 text-sm font-semibold text-stone-400 hover:text-white transition-colors"

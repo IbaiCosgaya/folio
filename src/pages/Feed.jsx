@@ -19,6 +19,9 @@ function Feed() {
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState(null)
   const navigate = useNavigate()
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [searching, setSearching] = useState(false)
 
   useEffect(() => {
     fetchFeed()
@@ -36,15 +39,58 @@ function Feed() {
     const followingIds = follows?.map(f => f.following_id) || []
     const allIds = [user.id, ...followingIds]
 
-    const { data } = await supabase
+    // Query limpia basada en tu estructura de la base de datos
+    const { data: sessionData } = await supabase
       .from('reading_sessions')
-      .select('*, books(title, author, cover_url, genre), profiles(username)')
+      .select('*, books(title, author, cover_url, genre)')
       .in('user_id', allIds)
       .order('created_at', { ascending: false })
       .limit(50)
 
-    if (data) setSessions(data)
+    if (sessionData) {
+      const uniqueUserIds = [...new Set(sessionData.map(s => s.user_id))]
+      const { data: profilesData } = await supabase
+        .from('profiles')
+        .select('id, username, last_name')
+        .in('id', uniqueUserIds)
+
+      const profilesMap = {}
+      profilesData?.forEach(p => { profilesMap[p.id] = p })
+
+      const sessionsWithProfiles = sessionData.map(s => ({
+        ...s,
+        profiles: profilesMap[s.user_id] || null
+      }))
+
+      setSessions(sessionsWithProfiles)
+    }
     setLoading(false)
+  }
+
+  // Esto busca automáticamente a medida que escribes
+  async function handleSearch(q) {
+    setSearchQuery(q)
+    if (q.length < 2) { setSearchResults([]); return }
+    setSearching(true)
+    
+    try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser()
+      
+      if (currentUser) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('*')
+          .ilike('username', `%${q}%`)
+          .neq('id', currentUser.id)
+          .limit(5)
+        
+        if (data) setSearchResults(data)
+      }
+    } catch (error) {
+      console.error("Error buscando usuarios:", error)
+    }
+    
+    setSearching(false)
   }
 
   function timeAgo(date) {
@@ -60,6 +106,7 @@ function Feed() {
   return (
     <div className="min-h-screen bg-stone-950 text-white pb-20">
 
+      {/* Header / Navbar */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-stone-800">
         <h1 className="text-xl font-bold tracking-tight">folio</h1>
         <div className="flex items-center gap-4">
@@ -74,7 +121,8 @@ function Feed() {
         </div>
       </div>
 
-      <div className="flex border-b border-stone-800">
+      {/* Tabs de Navegación */}
+      <div className="flex border-b border-stone-800 sticky top-0 z-10 bg-stone-950">
         <button className="flex-1 py-3 text-sm font-semibold text-white border-b-2 border-amber-500">
           Inicio
         </button>
@@ -89,7 +137,44 @@ function Feed() {
         </button>
       </div>
 
-      <div className="px-6 py-6 space-y-4">
+      {/* Buscador de Lectores */}
+      <div className="px-6 pt-4 relative z-30"> 
+        <div className="relative">
+          <input
+            type="text"
+            placeholder={searching ? "Buscando..." : "Buscar lectores..."}
+            value={searchQuery}
+            onChange={e => handleSearch(e.target.value)}
+            className="w-full bg-stone-900 text-white placeholder-stone-500 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-amber-500 text-sm"
+          />
+          {searchResults.length > 0 && (
+            <div className="absolute top-full left-0 right-0 mt-2 bg-stone-900 border border-stone-800 rounded-xl overflow-hidden z-50 shadow-2xl">
+              {searchResults.map(profile => (
+                <div
+                  key={profile.id}
+                  onClick={() => { navigate(`/user/${profile.id}`); setSearchQuery(''); setSearchResults([]) }}
+                  className="flex items-center gap-3 px-4 py-3 hover:bg-stone-800 cursor-pointer transition-colors"
+                >
+                  <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-sm font-bold text-stone-950 flex-shrink-0">
+                    {profile.username?.[0]?.toUpperCase() || '?'}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold">
+                      {profile.username} {profile.last_name && profile.last_name !== 'EMPTY' ? profile.last_name : ''}
+                    </p>
+                    {profile.bio && profile.bio !== 'EMPTY' && (
+                      <p className="text-stone-500 text-xs mt-0.5">{profile.bio}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Contenido del Feed */}
+      <div className="px-6 py-6 space-y-4 relative z-0">
         {sessions.length === 0 ? (
           <div className="bg-stone-900 rounded-2xl p-8 text-center border border-stone-800">
             <p className="text-stone-400 text-sm mb-2">Tu feed está vacío</p>
@@ -103,7 +188,12 @@ function Feed() {
                   {session.profiles?.username?.[0]?.toUpperCase() || '?'}
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-semibold">{session.profiles?.username || 'Usuario'}</p>
+                  <p
+                    className="text-sm font-semibold cursor-pointer hover:text-amber-500 transition-colors"
+                    onClick={() => navigate(`/user/${session.user_id}`)}
+                  >
+                    {session.profiles?.username || 'Usuario'}
+                  </p>
                   <p className="text-stone-500 text-xs">{timeAgo(session.created_at)}</p>
                 </div>
                 <span className="text-xl">{GENRE_STYLES[session.books?.genre]?.icon || '📖'}</span>

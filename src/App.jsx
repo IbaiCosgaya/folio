@@ -9,6 +9,7 @@ import Admin from './pages/Admin'
 import Register from './pages/Register'
 import Stats from './pages/Stats'
 import BookNotes from './pages/BookNotes'
+import PublicProfile from './pages/PublicProfile'
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
         <Route path="/reading/:id" element={<ReadingSession />} />
         <Route path="/notes/:id" element={<BookNotes />} />
         <Route path="/admin" element={<Admin />} />
+        <Route path="/user/:id" element={<PublicProfile />} />
       </Routes>
     </BrowserRouter>
   )
