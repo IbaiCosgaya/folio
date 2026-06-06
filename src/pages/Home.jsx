@@ -28,7 +28,10 @@ function Home() {
   async function fetchBooks() {
     const { data: { user } } = await supabase.auth.getUser()
     setUser(user)
-    const { data } = await supabase.from('books').select('*')
+    const { data } = await supabase
+      .from('books')
+      .select('*')
+      .eq('user_id', user.id)
     if (data) {
       setBooks(data.filter(b => !b.finished))
       setFinishedBooks(data.filter(b => b.finished))
