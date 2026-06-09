@@ -39,7 +39,7 @@ function AddBook() {
               title: b.title,
               author: b.author_name?.[0] || 'Autor desconocido',
               pages: b.number_of_pages_median || null,
-              cover: b.cover_i ? `https://covers.openlibrary.org/b/id/${b.cover_i}-M.jpg` : null,
+              cover: b.cover_i ? `https://covers.openlibrary.org/b/id/${b.cover_i}-L.jpg` : null,
               year: b.first_publish_year || null
             }))
             setResults(books)
@@ -50,18 +50,39 @@ function AddBook() {
     return () => clearTimeout(timer)
   }, [query])
 
+  async function fetchGoogleBooksCover(title, author) {
+    try {
+      const query = encodeURIComponent(`${title} ${author}`)
+      const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${query}&maxResults=1`)
+      const data = await res.json()
+      const item = data.items?.[0]
+      if (item?.volumeInfo?.imageLinks?.thumbnail) {
+        return item.volumeInfo.imageLinks.thumbnail
+          .replace('http://', 'https://')
+          .replace('&zoom=1', '&zoom=3')
+      }
+    } catch (e) { return null }
+    return null
+  }
+
   async function handleSearch() {
     if (!query) return
     setSearching(true)
     setResults([])
     const res = await fetch(`https://openlibrary.org/search.json?title=${encodeURIComponent(query)}&limit=5`)
     const data = await res.json()
-    const books = data.docs.map(b => ({
-      title: b.title,
-      author: b.author_name?.[0] || 'Autor desconocido',
-      pages: b.number_of_pages_median || null,
-      cover: b.cover_i ? `https://covers.openlibrary.org/b/id/${b.cover_i}-M.jpg` : null,
-      year: b.first_publish_year || null
+    const books = await Promise.all(data.docs.map(async b => {
+      let cover = b.cover_i ? `https://covers.openlibrary.org/b/id/${b.cover_i}-L.jpg` : null
+      if (!cover) {
+        cover = await fetchGoogleBooksCover(b.title, b.author_name?.[0] || '')
+      }
+      return {
+        title: b.title,
+        author: b.author_name?.[0] || 'Autor desconocido',
+        pages: b.number_of_pages_median || null,
+        cover,
+        year: b.first_publish_year || null
+      }
     }))
     setResults(books)
     setSearching(false)

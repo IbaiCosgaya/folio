@@ -23,6 +23,7 @@ function Feed() {
   const [searchResults, setSearchResults] = useState([])
   const [searching, setSearching] = useState(false)
   const navigate = useNavigate()
+  const [likes, setLikes] = useState({})
 
   useEffect(() => { fetchFeed() }, [])
 
@@ -44,7 +45,7 @@ function Feed() {
 
     const { data: sessionData } = await supabase
       .from('reading_sessions')
-      .select('*, books(title, author, cover_url, genre, year, total_pages, current_page)')
+      .select('*, books(title, author, cover_url, genre, year, total_pages, current_page, finished, rating)')
       .in('user_id', allIds)
       .order('created_at', { ascending: false })
       .limit(50)
@@ -55,9 +56,56 @@ function Feed() {
         .from('profiles').select('id, username').in('id', uniqueUserIds)
       const profilesMap = {}
       profilesData?.forEach(p => { profilesMap[p.id] = p })
+      
       setSessions(sessionData.map(s => ({ ...s, profiles: profilesMap[s.user_id] || null })))
+      
+      // Integración de Fetch Likes antes de terminar la carga
+      const sessionIds = sessionData.map(s => s.id)
+      if (sessionIds.length > 0) {
+        await fetchLikes(sessionIds, user?.id)
+      }
     }
     setLoading(false)
+  }
+
+  async function fetchLikes(sessionIds, currentUserId) {
+    const { data } = await supabase
+      .from('likes')
+      .select('session_id, user_id')
+      .in('session_id', sessionIds)
+      
+    const likesMap = {}
+    sessionIds.forEach(id => { likesMap[id] = { count: 0, liked: false } })
+
+    if (data) {
+      data.forEach(like => {
+        if (!likesMap[like.session_id]) likesMap[like.session_id] = { count: 0, liked: false }
+        likesMap[like.session_id].count++
+        if (like.user_id === currentUserId) likesMap[like.session_id].liked = true
+      })
+    }
+    setLikes(likesMap)
+  }
+
+  async function handleLike(sessionId) {
+    if (!user) return
+    const isLiked = likes[sessionId]?.liked
+    
+    setLikes(prev => ({
+      ...prev,
+      [sessionId]: {
+        count: (prev[sessionId]?.count || 0) + (isLiked ? -1 : 1),
+        liked: !isLiked
+      }
+    }))
+
+    if (isLiked) {
+      await supabase.from('likes').delete()
+        .eq('user_id', user.id)
+        .eq('session_id', sessionId)
+    } else {
+      await supabase.from('likes').insert({ user_id: user.id, session_id: sessionId })
+    }
   }
 
   async function handleSearch(q) {
@@ -165,7 +213,7 @@ function Feed() {
         {sessions.length === 0 ? (
           <div className="mx-5 bg-white rounded-3xl p-12 text-center border border-stone-200/40">
             <p className="text-stone-400 text-sm">Tu feed está vacío</p>
-            <p className="text-stone-300 text-xs mt-1">Sigue a otros lectores para ver su actividad</p>
+            <p className="text-stone-300 text-xs mt-1">Sigue a otros lectores para ver su activity</p>
           </div>
         ) : (
           sessions.map(session => (
@@ -191,7 +239,7 @@ function Feed() {
                   <div className={`absolute inset-0 ${GENRE_STYLES[session.books?.genre]?.color || 'bg-stone-100'} opacity-40`} />
                 )}
 
-                {/* Degradado superior oscuro para la lectura del perfil */}
+                {/* Degradado superior oscuro */}
                 <div
                   className="absolute top-0 left-0 right-0 z-20 h-36"
                   style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 50%, transparent 100%)' }}
@@ -249,70 +297,106 @@ function Feed() {
                   {session.books?.year && <span className="text-stone-300 font-normal"> · {session.books.year}</span>}
                 </p>
 
-                {/* Barra de progreso interactiva */}
-                {session.books?.total_pages > 0 && session.books?.current_page !== undefined && (
+                {/* Lógica condicional: Terminado vs En Progreso */}
+                {session.books?.finished ? (
                   <div className="mt-4">
-                    <div className="flex justify-between text-[11px] text-stone-400 mb-2 font-medium">
-                      <span>Progreso</span>
-                      <span className="font-bold text-orange-500">
-                        {Math.round((session.books.current_page / session.books.total_pages) * 100)}%
-                      </span>
+                    <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-orange-100 rounded-2xl px-5 py-4 text-center">
+                      <p className="text-2xl mb-1">🎉</p>
+                      <p className="text-sm font-black text-stone-900">¡Libro terminado!</p>
+                      <p className="text-stone-400 text-xs mt-0.5">
+                        {session.books.total_pages} páginas · {session.books.genre?.replace('_', ' ')}
+                      </p>
+                      {session.books?.rating && (
+                        <div className="flex justify-center gap-1 mt-2">
+                          {[1, 2, 3, 4, 5].map(star => (
+                            <span key={star} className={`text-sm ${star <= session.books.rating ? 'text-amber-400' : 'text-stone-200'}`}>★</span>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <div className="w-full bg-stone-100 rounded-full h-2 relative flex items-center">
-                      <div
-                        className={`h-2 rounded-full transition-all duration-500 ${
-                          session.books?.genre === 'fantasia' ? 'bg-purple-400' :
-                          session.books?.genre === 'ciencia_ficcion' ? 'bg-blue-400' :
-                          session.books?.genre === 'thriller' ? 'bg-red-400' :
-                          session.books?.genre === 'romance' ? 'bg-pink-400' :
-                          session.books?.genre === 'historica' ? 'bg-amber-400' :
-                          session.books?.genre === 'terror' ? 'bg-orange-400' :
-                          session.books?.genre === 'no_ficcion' ? 'bg-teal-400' :
-                          session.books?.genre === 'autobiografia' ? 'bg-green-400' :
-                          'bg-stone-400'
-                        }`}
-                        style={{ width: `${Math.max(Math.min((session.books.current_page / session.books.total_pages) * 100, 100), 0)}%` }}
-                      />
-                      <span 
-                        className="absolute text-lg leading-none transition-all duration-500 z-10"
-                        style={{ 
-                          left: `calc(${Math.min((session.books.current_page / session.books.total_pages) * 100, 100)}% - 10px)`,
-                          top: '-8px'
-                        }}
-                      >
-                        {GENRE_STYLES[session.books?.genre]?.icon || '📖'}
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      <span className="text-xs font-bold px-3 py-1.5 bg-orange-50 text-orange-600 rounded-full border border-orange-100">
+                        <b>📖 {session.pages_read} pág. hoy</b>
                       </span>
+                      {session.minutes_read && (
+                        <span className="text-xs font-bold px-3 py-1.5 bg-stone-50 text-stone-500 rounded-full border border-stone-200">
+                          ⏱ {session.minutes_read} min
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-4">
+                    {session.books?.total_pages > 0 && (
+                      <>
+                        <div className="flex justify-between text-[11px] text-stone-400 mb-1.5 font-medium">
+                          <span>Progreso</span>
+                          <span className="font-bold text-orange-500">
+                            {Math.round((session.books.current_page / session.books.total_pages) * 100)}%
+                          </span>
+                        </div>
+                        <div className="w-full bg-stone-100 rounded-full h-2 relative flex items-center">
+                          <div
+                            className={`h-2 rounded-full transition-all duration-500 ${
+                              session.books?.genre === 'fantasia' ? 'bg-purple-400' :
+                              session.books?.genre === 'ciencia_ficcion' ? 'bg-blue-400' :
+                              session.books?.genre === 'thriller' ? 'bg-red-400' :
+                              session.books?.genre === 'romance' ? 'bg-pink-400' :
+                              session.books?.genre === 'historica' ? 'bg-amber-400' :
+                              session.books?.genre === 'terror' ? 'bg-orange-400' :
+                              session.books?.genre === 'no_ficcion' ? 'bg-teal-400' :
+                              session.books?.genre === 'autobiografia' ? 'bg-green-400' :
+                              'bg-stone-400'
+                            }`}
+                            style={{ width: `${Math.max(Math.min((session.books.current_page / session.books.total_pages) * 100, 100), 2)}%` }}
+                          />
+                          <span
+                            className="absolute text-lg leading-none transition-all duration-500 z-10"
+                            style={{
+                              left: `calc(${Math.min((session.books.current_page / session.books.total_pages) * 100, 98)}% - 10px)`,
+                              top: '-8px'
+                            }}
+                          >
+                            {GENRE_STYLES[session.books?.genre]?.icon || '📖'}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                    <div className="flex flex-wrap gap-2 mt-4">
+                      <span className="text-xs font-bold px-3 py-1.5 bg-orange-50 text-orange-600 rounded-full border border-orange-100">
+                        📖 {session.pages_read} pág. hoy
+                      </span>
+                      {session.minutes_read && (
+                        <span className="text-xs font-bold px-3 py-1.5 bg-stone-50 text-stone-500 rounded-full border border-stone-200">
+                          ⏱ {session.minutes_read} min
+                        </span>
+                      )}
                     </div>
                   </div>
                 )}
 
-                {/* Stats */}
-                <div className="flex flex-wrap gap-2 mt-5">
-                  <span className="text-xs font-bold px-3 py-1.5 bg-orange-50 text-orange-600 rounded-full border border-orange-100">
-                    📖 {session.pages_read} pág. hoy
-                  </span>
-                  {session.minutes_read && (
-                    <span className="text-xs font-bold px-3 py-1.5 bg-stone-50 text-stone-500 rounded-full border border-stone-200">
-                      ⏱ {session.minutes_read} min
-                    </span>
-                  )}
+                {/* Sección del botón Like (Insertado correctamente al final del bloque de detalles) */}
+                <div className="flex items-center gap-2 mt-4 pt-4 border-t border-stone-100">
+                  <button
+                    onClick={() => handleLike(session.id)}
+                    className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold transition-all ${
+                      likes[session.id]?.liked
+                        ? 'bg-red-50 text-red-500 border border-red-100'
+                        : 'bg-stone-50 text-stone-400 border border-stone-100 hover:border-red-100 hover:text-red-400'
+                    }`}
+                  >
+                    <span>{likes[session.id]?.liked ? '❤️' : '🤍'}</span>
+                    <span>{likes[session.id]?.count || 0}</span>
+                  </button>
                 </div>
 
-                {/* Comentarios o Notas adicionales */}
-                {session.note && (
-                  <div className="mt-4 bg-stone-50/60 border border-stone-100 rounded-xl px-4 py-3">
-                    <p className="text-stone-500 text-xs italic font-serif leading-relaxed">
-                      "{session.note}"
-                    </p>
-                  </div>
-                )}
               </div>
             </div>
           ))
         )}
       </div>
 
-      {/* Navbar flotante con efecto cristal */}
+      {/* Navbar flotante */}
       <div
         className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 px-3 py-2 rounded-full border border-white/40"
         style={{
@@ -349,4 +433,4 @@ function Feed() {
   )
 }
 
-export default Feed;
+export default Feed
