@@ -59,7 +59,6 @@ function Feed() {
       
       setSessions(sessionData.map(s => ({ ...s, profiles: profilesMap[s.user_id] || null })))
       
-      // Integración de Fetch Likes antes de terminar la carga
       const sessionIds = sessionData.map(s => s.id)
       if (sessionIds.length > 0) {
         await fetchLikes(sessionIds, user?.id)
@@ -140,8 +139,32 @@ function Feed() {
   return (
     <div className="min-h-screen bg-[#f8f6f2] pb-36 antialiased" style={{ fontFamily: "'Inter', -apple-system, sans-serif" }}>
 
-      {/* Header */}
-      <div className="px-5 pt-12 pb-3 flex items-center justify-between">
+      {/* Blur superior fijo */}
+      <div
+        className="fixed top-0 left-0 right-0 z-35 h-24 pointer-events-none"
+        style={{
+          background: 'linear-gradient(to bottom, rgba(248,246,242,1) 0%, rgba(248,246,242,0.8) 60%, transparent 100%)',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          maskImage: 'linear-gradient(to bottom, black 0%, black 40%, transparent 100%)',
+          WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 40%, transparent 100%)',
+        }}
+      />
+
+      {/* Blur inferior fijo */}
+      <div
+        className="fixed bottom-0 left-0 right-0 z-35 h-32 pointer-events-none"
+        style={{
+          background: 'linear-gradient(to top, rgba(248,246,242,1) 0%, rgba(248,246,242,0.8) 60%, transparent 100%)',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          maskImage: 'linear-gradient(to top, black 0%, black 40%, transparent 100%)',
+          WebkitMaskImage: 'linear-gradient(to top, black 0%, black 40%, transparent 100%)',
+        }}
+      />
+
+      {/* Header - Incrementado el z-index relativo para que no se oculte tras el blur */}
+      <div className="px-5 pt-12 pb-3 flex items-center justify-between relative z-40">
         <div
           className="flex items-center gap-2.5 cursor-pointer"
           onClick={() => navigate('/profile')}
@@ -177,8 +200,8 @@ function Feed() {
         <p className="text-stone-400 text-[13px] mt-0.5 italic">¿qué están leyendo hoy?</p>
       </div>
 
-      {/* Buscador */}
-      <div className="px-5 mb-6 relative z-30">
+      {/* Buscador - Subido a z-50 para que la lista desplegable de resultados se superponga al blur fixed si es necesario */}
+      <div className="px-5 mb-6 relative z-50">
         <div className="relative">
           <span className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 text-sm">🔍</span>
           <input
@@ -291,6 +314,7 @@ function Feed() {
 
               {/* Contenedor de detalles del post */}
               <div className="px-6 pb-7 bg-white relative z-30">
+                {/* Título y Autor */}
                 <h3 className="text-xl font-black text-stone-900 tracking-tight leading-snug">{session.books?.title}</h3>
                 <p className="text-stone-400 text-sm mt-0.5 font-medium">
                   {session.books?.author}
@@ -375,7 +399,7 @@ function Feed() {
                   </div>
                 )}
 
-                {/* Sección del botón Like (Insertado correctamente al final del bloque de detalles) */}
+                {/* Sección del botón Like */}
                 <div className="flex items-center gap-2 mt-4 pt-4 border-t border-stone-100">
                   <button
                     onClick={() => handleLike(session.id)}
@@ -396,34 +420,69 @@ function Feed() {
         )}
       </div>
 
-      {/* Navbar flotante */}
+      {/* Navbar flotante con z-50 */}
       <div
         className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 px-3 py-2 rounded-full border border-white/40"
         style={{
-          background: 'rgba(255, 255, 255, 0.55)',
-          backdropFilter: 'blur(20px) saturate(1.8)',
-          WebkitBackdropFilter: 'blur(20px) saturate(1.8)',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.6)',
-          width: '88%',
-          maxWidth: '380px',
+          background: 'rgba(255, 255, 255, 0.45)',
+          backdropFilter: 'blur(24px) saturate(2)',
+          WebkitBackdropFilter: 'blur(24px) saturate(2)',
+          boxShadow: '0 4px 24px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.8)',
+          width: '85%',
+          maxWidth: '360px',
         }}
       >
         {[
-          { label: 'Inicio', icon: '🏠', path: '/feed', active: true },
-          { label: 'Registro', icon: '📖', path: '/home', active: false },
-          { label: 'Stats', icon: '📊', path: '/stats', active: false },
-          { label: 'Perfil', icon: '👤', path: '/profile', active: false },
+          {
+            label: 'Inicio', path: '/feed', active: true,
+            icon: (active) => (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/>
+                <path d="M9 21V12h6v9"/>
+              </svg>
+            )
+          },
+          {
+            label: 'Registro', path: '/home', active: false,
+            icon: (active) => (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 19.5A2.5 2.5 0 016.5 17H20"/>
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>
+                <line x1="9" y1="7" x2="15" y2="7"/>
+                <line x1="9" y1="11" x2="15" y2="11"/>
+              </svg>
+            )
+          },
+          {
+            label: 'Stats', path: '/stats', active: false,
+            icon: (active) => (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="20" x2="18" y2="10"/>
+                <line x1="12" y1="20" x2="12" y2="4"/>
+                <line x1="6" y1="20" x2="6" y2="14"/>
+              </svg>
+            )
+          },
+          {
+            label: 'Perfil', path: '/profile', active: false,
+            icon: (active) => (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+            )
+          },
         ].map(item => (
           <button
             key={item.path}
             onClick={() => navigate(item.path)}
-            className={`flex-1 py-2.5 flex flex-col items-center gap-0.5 rounded-full transition-all ${
+            className={`flex-1 py-2 flex flex-col items-center gap-1 rounded-full transition-all ${
               item.active
-                ? 'bg-orange-400/20 text-orange-500'
+                ? 'text-orange-500'
                 : 'text-stone-400 hover:text-stone-700'
             }`}
           >
-            <span className="text-[17px]">{item.icon}</span>
+            {item.icon(item.active)}
             <span className="text-[9px] font-semibold tracking-tight">{item.label}</span>
           </button>
         ))}
