@@ -79,8 +79,13 @@ function Admin() {
       cover_url: book.cover_url,
       genre: book.genre,
       year: book.year ? parseInt(book.year) : null
-    }).eq('id', book.id)
-    setApprovedBooks(books => books.map(b => b.id === book.id ? { ...b, ...book } : b))
+    }).eq('title', book.title).eq('author', book.author)
+
+    setApprovedBooks(books => books.map(b =>
+      b.title === book.title && b.author === book.author
+        ? { ...b, cover_url: book.cover_url, genre: book.genre, year: book.year }
+        : b
+    ))
     setEditingBook(null)
   }
 
