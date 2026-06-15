@@ -22,10 +22,19 @@ function Feed() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState([])
   const [searching, setSearching] = useState(false)
-  const navigate = useNavigate()
   const [likes, setLikes] = useState({})
+  // Nuevo estado para la notificación integrada
+  const [toast, setToast] = useState(null)
+  
+  const navigate = useNavigate()
 
   useEffect(() => { fetchFeed() }, [])
+
+  // Función helper para manejar el ciclo de vida del toast
+  function showToast(msg) {
+    setToast(msg)
+    setTimeout(() => setToast(null), 3000)
+  }
 
   async function fetchFeed() {
     const { data: { user } } = await supabase.auth.getUser()
@@ -107,6 +116,35 @@ function Feed() {
     }
   }
 
+  async function handleAddToList(session) {
+    if (!user) return
+    const { data: existing } = await supabase
+      .from('books')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('title', session.books.title)
+      .single()
+
+    if (existing) {
+      showToast('Ya tienes este libro en tu lista')
+      return
+    }
+
+    const { error } = await supabase.from('books').insert({
+      user_id: user.id,
+      title: session.books.title,
+      author: session.books.author,
+      cover_url: session.books.cover_url,
+      genre: session.books.genre,
+      year: session.books.year,
+      total_pages: session.books.total_pages,
+      current_page: 0,
+      finished: false
+    })
+
+    if (!error) showToast(`"${session.books.title}" añadido a tu lista`)
+  }
+
   async function handleSearch(q) {
     setSearchQuery(q)
     if (q.length < 2) { setSearchResults([]); return }
@@ -163,7 +201,14 @@ function Feed() {
         }}
       />
 
-      {/* Header - Incrementado el z-index relativo para que no se oculte tras el blur */}
+      {/* Toast visual integrado */}
+      {toast && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-stone-900 text-white text-sm font-semibold px-5 py-3 rounded-full shadow-lg transition-all animate-bounce">
+          {toast}
+        </div>
+      )}
+
+      {/* Header */}
       <div className="px-5 pt-12 pb-3 flex items-center justify-between relative z-40">
         <div
           className="flex items-center gap-2.5 cursor-pointer"
@@ -200,7 +245,7 @@ function Feed() {
         <p className="text-stone-400 text-[13px] mt-0.5 italic">¿qué están leyendo hoy?</p>
       </div>
 
-      {/* Buscador - Subido a z-50 para que la lista desplegable de resultados se superponga al blur fixed si es necesario */}
+      {/* Buscador */}
       <div className="px-5 mb-6 relative z-50">
         <div className="relative">
           <span className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 text-sm">🔍</span>
@@ -248,7 +293,6 @@ function Feed() {
               {/* Bloque imagen superior */}
               <div className="relative w-full overflow-hidden flex-1 flex items-center justify-center" style={{ minHeight: '52vh' }}>
 
-                {/* Fondo desenfocado de extremo a extremo superior */}
                 {session.books?.cover_url ? (
                   <div
                     className="absolute inset-0 bg-cover bg-center"
@@ -262,13 +306,11 @@ function Feed() {
                   <div className={`absolute inset-0 ${GENRE_STYLES[session.books?.genre]?.color || 'bg-stone-100'} opacity-40`} />
                 )}
 
-                {/* Degradado superior oscuro */}
                 <div
                   className="absolute top-0 left-0 right-0 z-20 h-36"
                   style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 50%, transparent 100%)' }}
                 />
 
-                {/* Info del usuario arriba a la izquierda */}
                 <div className="absolute top-6 left-6 z-30 flex items-center gap-3 cursor-pointer"
                   onClick={() => navigate(`/user/${session.user_id}`)}
                 >
@@ -283,14 +325,12 @@ function Feed() {
                   </div>
                 </div>
 
-                {/* Badge género arriba derecha */}
                 <div className="absolute top-6 right-6 z-30">
                   <span className="text-base p-2 rounded-full bg-white/20 backdrop-blur-md border border-white/30 block shadow-sm">
                     {GENRE_STYLES[session.books?.genre]?.icon || '📖'}
                   </span>
                 </div>
 
-                {/* Portada centrada real */}
                 <div className="relative z-10 w-full h-full max-h-[42vh] px-10 py-4 flex items-center justify-center">
                   {session.books?.cover_url ? (
                     <img
@@ -305,7 +345,6 @@ function Feed() {
                   )}
                 </div>
 
-                {/* Degradado inferior orgánico hacia el blanco absoluto */}
                 <div
                   className="absolute bottom-0 left-0 right-0 z-20 h-32"
                   style={{ background: 'linear-gradient(to top, #ffffff 0%, rgba(255,255,255,0.5) 40%, transparent 100%)' }}
@@ -314,14 +353,12 @@ function Feed() {
 
               {/* Contenedor de detalles del post */}
               <div className="px-6 pb-7 bg-white relative z-30">
-                {/* Título y Autor */}
                 <h3 className="text-xl font-black text-stone-900 tracking-tight leading-snug">{session.books?.title}</h3>
                 <p className="text-stone-400 text-sm mt-0.5 font-medium">
                   {session.books?.author}
                   {session.books?.year && <span className="text-stone-300 font-normal"> · {session.books.year}</span>}
                 </p>
 
-                {/* Lógica condicional: Terminado vs En Progreso */}
                 {session.books?.finished ? (
                   <div className="mt-4">
                     <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-orange-100 rounded-2xl px-5 py-4 text-center">
@@ -399,7 +436,7 @@ function Feed() {
                   </div>
                 )}
 
-                {/* Sección del botón Like */}
+                {/* --- Sección de botones de interacción unificada --- */}
                 <div className="flex items-center gap-2 mt-4 pt-4 border-t border-stone-100">
                   <button
                     onClick={() => handleLike(session.id)}
@@ -418,6 +455,20 @@ function Feed() {
                     </svg>
                     <span>{likes[session.id]?.count || 0}</span>
                   </button>
+
+                  {/* Botón condicional para añadir el libro a la lista del usuario actual */}
+                  {session.user_id !== user?.id && (
+                    <button
+                      onClick={() => handleAddToList(session)}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold bg-stone-50 text-stone-400 border border-stone-100 hover:border-orange-200 hover:text-orange-500 transition-all"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"/>
+                        <line x1="5" y1="12" x2="19" y2="12"/>
+                      </svg>
+                      <span>Mi lista</span>
+                    </button>
+                  )}
                 </div>
 
               </div>
@@ -426,7 +477,7 @@ function Feed() {
         )}
       </div>
 
-      {/* Navbar flotante con z-50 */}
+      {/* Navbar flotante */}
       <div
         className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 px-3 py-2 rounded-full border border-white/40"
         style={{
@@ -450,7 +501,7 @@ function Feed() {
           },
           {
             label: 'Registro', path: '/home', active: false,
-            icon: (active) => (
+            icon: () => (
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M4 19.5A2.5 2.5 0 016.5 17H20"/>
                 <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>
@@ -461,7 +512,7 @@ function Feed() {
           },
           {
             label: 'Stats', path: '/stats', active: false,
-            icon: (active) => (
+            icon: () => (
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="18" y1="20" x2="18" y2="10"/>
                 <line x1="12" y1="20" x2="12" y2="4"/>
@@ -471,7 +522,7 @@ function Feed() {
           },
           {
             label: 'Perfil', path: '/profile', active: false,
-            icon: (active) => (
+            icon: () => (
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
                 <circle cx="12" cy="7" r="4"/>
