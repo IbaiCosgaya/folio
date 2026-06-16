@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 
@@ -29,25 +29,44 @@ function Feed() {
 
   useEffect(() => { fetchFeed() }, [])
 
-  // Hook de scroll interactivo para las tarjetas (Móvil & PC)
+  // CORRECCIÓN PARA IPHONE: Hook de scroll usando requestAnimationFrame (Aceleración nativa)
   useEffect(() => {
+    let ticking = false
+
     const handleScroll = () => {
-      const cards = document.querySelectorAll('.book-card-3d')
-      const windowHeight = window.innerHeight
-      cards.forEach(card => {
-        const rect = card.getBoundingClientRect()
-        const cardCenter = rect.top + rect.height / 2
-        const distanceFromCenter = (cardCenter - windowHeight / 2) / (windowHeight / 2)
-        const tilt = distanceFromCenter * 4
-        const scale = 1 - Math.abs(distanceFromCenter) * 0.03
-        card.style.transform = `perspective(1200px) rotateX(${tilt}deg) scale(${Math.max(scale, 0.94)})`
-        card.style.boxShadow = `0 ${8 + Math.abs(tilt) * 2}px ${30 + Math.abs(tilt) * 4}px rgba(0,0,0,${0.04 + Math.abs(distanceFromCenter) * 0.06})`
-      })
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const cards = document.querySelectorAll('.book-card-3d')
+          const windowHeight = window.innerHeight
+          
+          cards.forEach(card => {
+            const rect = card.getBoundingClientRect()
+            // Evitar calcular tarjetas que están completamente fuera de la pantalla (ahorra CPU en iOS)
+            if (rect.bottom < 0 || rect.top > windowHeight) return
+
+            const cardCenter = rect.top + rect.height / 2
+            const distanceFromCenter = (cardCenter - windowHeight / 2) / (windowHeight / 2)
+            const tilt = distanceFromCenter * 4
+            const scale = 1 - Math.abs(distanceFromCenter) * 0.03
+            
+            // Usamos transform de 3 dimensiones con translateZ(0) para activar el chip gráfico de Apple
+            card.style.transform = `perspective(1200px) rotateX(${tilt}deg) scale(${Math.max(scale, 0.94)}) translateZ(0)`
+            card.style.boxShadow = `0 ${8 + Math.abs(tilt) * 2}px ${30 + Math.abs(tilt) * 4}px rgba(0,0,0,${0.03 + Math.abs(distanceFromCenter) * 0.05})`
+          })
+          ticking = false
+        })
+        ticking = true
+      }
     }
 
     window.addEventListener('scroll', handleScroll, { passive: true })
-    handleScroll()
-    return () => window.removeEventListener('scroll', handleScroll)
+    // Ejecutar un pequeño delay inicial para que el DOM esté listo tras el loading
+    const timer = setTimeout(handleScroll, 100)
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll)
+      clearTimeout(timer)
+    }
   }, [sessions])
 
   function showToast(msg) {
@@ -56,43 +75,48 @@ function Feed() {
   }
 
   async function fetchFeed() {
-    const { data: { user } } = await supabase.auth.getUser()
-    setUser(user)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      setUser(user)
 
-    if (user) {
-      const { data: myProfileData } = await supabase
-        .from('profiles').select('username').eq('id', user.id).single()
-      if (myProfileData) setMyProfile(myProfileData)
-    }
-
-    const { data: follows } = await supabase
-      .from('follows').select('following_id').eq('follower_id', user.id)
-
-    const followingIds = follows?.map(f => f.following_id) || []
-    const allIds = [user.id, ...followingIds]
-
-    const { data: sessionData } = await supabase
-      .from('reading_sessions')
-      .select('*, books(title, author, cover_url, genre, year, total_pages, current_page, finished, rating)')
-      .in('user_id', allIds)
-      .order('created_at', { ascending: false })
-      .limit(50)
-
-    if (sessionData) {
-      const uniqueUserIds = [...new Set(sessionData.map(s => s.user_id))]
-      const { data: profilesData } = await supabase
-        .from('profiles').select('id, username').in('id', uniqueUserIds)
-      const profilesMap = {}
-      profilesData?.forEach(p => { profilesMap[p.id] = p })
-      
-      setSessions(sessionData.map(s => ({ ...s, profiles: profilesMap[s.user_id] || null })))
-      
-      const sessionIds = sessionData.map(s => s.id)
-      if (sessionIds.length > 0) {
-        await fetchLikes(sessionIds, user?.id)
+      if (user) {
+        const { data: myProfileData } = await supabase
+          .from('profiles').select('username').eq('id', user.id).single()
+        if (myProfileData) setMyProfile(myProfileData)
       }
+
+      const { data: follows } = await supabase
+        .from('follows').select('following_id').eq('follower_id', user.id)
+
+      const followingIds = follows?.map(f => f.following_id) || []
+      const allIds = [user.id, ...followingIds]
+
+      const { data: sessionData } = await supabase
+        .from('reading_sessions')
+        .select('*, books(title, author, cover_url, genre, year, total_pages, current_page, finished, rating)')
+        .in('user_id', allIds)
+        .order('created_at', { ascending: false })
+        .limit(25) // CORRECCIÓN IPHONE: Reducido de 50 a 25 para no saturar la memoria inicial de iOS
+
+      if (sessionData) {
+        const uniqueUserIds = [...new Set(sessionData.map(s => s.user_id))]
+        const { data: profilesData } = await supabase
+          .from('profiles').select('id, username').in('id', uniqueUserIds)
+        const profilesMap = {}
+        profilesData?.forEach(p => { profilesMap[p.id] = p })
+        
+        setSessions(sessionData.map(s => ({ ...s, profiles: profilesMap[s.user_id] || null })))
+        
+        const sessionIds = sessionData.map(s => s.id)
+        if (sessionIds.length > 0) {
+          await fetchLikes(sessionIds, user?.id)
+        }
+      }
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   async function fetchLikes(sessionIds, currentUserId) {
@@ -190,7 +214,7 @@ function Feed() {
   return (
     <div className="min-h-screen bg-[#f8f6f2] pb-36 antialiased" style={{ fontFamily: "'Inter', -apple-system, sans-serif" }}>
 
-      {/* Inyección de CSS para la renderización tridimensional del libro */}
+      {/* Optimización de CSS tridimensional adaptada para WebKit/Safari iOS */}
       <style>{`
         .book-wrapper {
           perspective: 1000px;
@@ -201,16 +225,16 @@ function Feed() {
           height: 100%;
         }
         .book-3d {
-          width: 150px;
-          height: 220px;
+          width: 140px;
+          height: 205px;
           position: relative;
           transform-style: preserve-3d;
-          transform: rotateY(-18deg) rotateX(8deg);
-          transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+          transform: rotateY(-16deg) rotateX(6deg) translateZ(0);
+          transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+          will-change: transform;
         }
-        /* Efecto de rotación al pasar el ratón en PC */
         .book-wrapper:hover .book-3d {
-          transform: rotateY(-4deg) rotateX(4deg) scale(1.04);
+          transform: rotateY(-2deg) rotateX(2deg) scale(1.03) translateZ(0);
         }
         .book-front {
           position: absolute;
@@ -220,37 +244,37 @@ function Feed() {
           top: 0;
           background-size: cover;
           background-position: center;
-          border-radius: 2px 5px 5px 2px;
-          box-shadow: inset 5px 0 12px rgba(0,0,0,0.12);
-          transform: translateZ(10px);
+          border-radius: 2px 4px 4px 2px;
+          box-shadow: inset 4px 0 10px rgba(0,0,0,0.15);
+          transform: translateZ(9px);
           z-index: 2;
           background-color: #fff;
         }
         .book-spine {
           position: absolute;
-          width: 20px; /* El grosor físico del libro */
+          width: 18px;
           height: 100%;
           left: 0;
           top: 0;
-          transform: rotateY(-90deg) translateZ(10px);
+          transform: rotateY(-90deg) translateZ(9px);
           transform-origin: left center;
-          box-shadow: inset -3px 0 6px rgba(0,0,0,0.35);
+          box-shadow: inset -2px 0 5px rgba(0,0,0,0.3);
           z-index: 1;
         }
         .book-shadow {
           position: absolute;
           width: 100%;
           height: 100%;
-          background: rgba(0, 0, 0, 0.28);
-          filter: blur(14px);
-          transform: translateZ(-25px) rotateY(-15deg) scale(0.93);
-          top: 14px;
-          left: 18px;
+          background: rgba(0, 0, 0, 0.22);
+          filter: blur(12px);
+          transform: translateZ(-20px) rotateY(-12deg) scale(0.92);
+          top: 12px;
+          left: 15px;
           pointer-events: none;
         }
       `}</style>
 
-      {/* Blurs fijos superiores e inferiores */}
+      {/* Blurs fijos optimizados en iOS */}
       <div className="fixed top-0 left-0 right-0 z-35 h-24 pointer-events-none" style={{ background: 'linear-gradient(to bottom, rgba(248,246,242,1) 0%, rgba(248,246,242,0.8) 60%, transparent 100%)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', maskImage: 'linear-gradient(to bottom, black 0%, black 40%, transparent 100%)', WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 40%, transparent 100%)' }} />
       <div className="fixed bottom-0 left-0 right-0 z-35 h-32 pointer-events-none" style={{ background: 'linear-gradient(to top, rgba(248,246,242,1) 0%, rgba(248,246,242,0.8) 60%, transparent 100%)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', maskImage: 'linear-gradient(to top, black 0%, black 40%, transparent 100%)', WebkitMaskImage: 'linear-gradient(to top, black 0%, black 40%, transparent 100%)' }} />
 
@@ -314,7 +338,7 @@ function Feed() {
         </div>
       </div>
 
-      {/* Feed — Lista de Tarjetas Estilo Post */}
+      {/* Feed — Tarjetas */}
       <div className="space-y-8 max-w-md mx-auto">
         {sessions.length === 0 ? (
           <div className="mx-5 bg-white rounded-3xl p-12 text-center border border-stone-200/40">
@@ -331,15 +355,14 @@ function Feed() {
                 className="book-card-3d mx-5 bg-white rounded-[2.5rem] overflow-hidden border border-stone-100 shadow-md flex flex-col justify-between"
                 style={{
                   minHeight: '82vh',
-                  transition: 'transform 0.15s ease-out, box-shadow 0.15s ease-out',
+                  transition: 'transform 0.1s ease-out, box-shadow 0.1s ease-out', // Acelerado el suavizado para pantallas ProMotion (120Hz)
                   willChange: 'transform',
                   transformOrigin: 'center center',
                 }}
               >
-                {/* Bloque de imagen superior modificado a contenedor 3D */}
+                {/* Contenedor visual del libro */}
                 <div className="relative w-full overflow-hidden flex-1 flex items-center justify-center" style={{ minHeight: '52vh' }}>
                   
-                  {/* Fondo desenfocado */}
                   {session.books?.cover_url ? (
                     <div
                       className="absolute inset-0 bg-cover bg-center"
@@ -355,7 +378,7 @@ function Feed() {
 
                   <div className="absolute top-0 left-0 right-0 z-20 h-36" style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 50%, transparent 100%)' }} />
 
-                  {/* Avatar / Username */}
+                  {/* Perfil del Publicador */}
                   <div className="absolute top-6 left-6 z-30 flex items-center gap-3 cursor-pointer" onClick={() => navigate(`/user/${session.user_id}`)}>
                     <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-sm font-bold text-white border border-white/30 shadow-sm">
                       {session.profiles?.username?.[0]?.toUpperCase() || '?'}
@@ -366,19 +389,17 @@ function Feed() {
                     </div>
                   </div>
 
-                  {/* Icono de Género Superior */}
                   <div className="absolute top-6 right-6 z-30">
                     <span className="text-base p-2 rounded-full bg-white/20 backdrop-blur-md border border-white/30 block shadow-sm">
                       {currentGenre.icon}
                     </span>
                   </div>
 
-                  {/* ESTRUCTURA DEL LIBRO EN 3D REAL */}
+                  {/* Renderizado 3D real del libro */}
                   <div className="relative z-10 w-full h-full max-h-[42vh] px-10 py-4 flex items-center justify-center">
                     <div className="book-wrapper">
                       <div className="book-shadow" />
                       <div className="book-3d">
-                        {/* Portada */}
                         {session.books?.cover_url ? (
                           <div className="book-front" style={{ backgroundImage: `url(${session.books.cover_url})` }} />
                         ) : (
@@ -387,7 +408,6 @@ function Feed() {
                             <p className="text-[10px] font-black uppercase tracking-wider line-clamp-3 leading-tight">{session.books?.title}</p>
                           </div>
                         )}
-                        {/* Lomo volumétrico */}
                         <div className="book-spine" style={{ backgroundColor: currentGenre.spine }} />
                       </div>
                     </div>
@@ -396,7 +416,7 @@ function Feed() {
                   <div className="absolute bottom-0 left-0 right-0 z-20 h-32" style={{ background: 'linear-gradient(to top, #ffffff 0%, rgba(255,255,255,0.5) 40%, transparent 100%)' }} />
                 </div>
 
-                {/* Contenedor de detalles del post */}
+                {/* Detalles de lectura */}
                 <div className="px-6 pb-7 bg-white relative z-30">
                   <h3 className="text-xl font-black text-stone-900 tracking-tight leading-snug">{session.books?.title}</h3>
                   <p className="text-stone-400 text-sm mt-0.5 font-medium">
@@ -479,7 +499,7 @@ function Feed() {
                     </div>
                   )}
 
-                  {/* Interacciones */}
+                  {/* Acciones */}
                   <div className="flex items-center gap-2 mt-4 pt-4 border-t border-stone-100">
                     <button
                       onClick={() => handleLike(session.id)}
