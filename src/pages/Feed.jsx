@@ -29,46 +29,6 @@ function Feed() {
 
   useEffect(() => { fetchFeed() }, [])
 
-  // CORRECCIÓN PARA IPHONE: Hook de scroll usando requestAnimationFrame (Aceleración nativa)
-  useEffect(() => {
-    let ticking = false
-
-    const handleScroll = () => {
-      if (!ticking) {
-        window.requestAnimationFrame(() => {
-          const cards = document.querySelectorAll('.book-card-3d')
-          const windowHeight = window.innerHeight
-          
-          cards.forEach(card => {
-            const rect = card.getBoundingClientRect()
-            // Evitar calcular tarjetas que están completamente fuera de la pantalla (ahorra CPU en iOS)
-            if (rect.bottom < 0 || rect.top > windowHeight) return
-
-            const cardCenter = rect.top + rect.height / 2
-            const distanceFromCenter = (cardCenter - windowHeight / 2) / (windowHeight / 2)
-            const tilt = distanceFromCenter * 4
-            const scale = 1 - Math.abs(distanceFromCenter) * 0.03
-            
-            // Usamos transform de 3 dimensiones con translateZ(0) para activar el chip gráfico de Apple
-            card.style.transform = `perspective(1200px) rotateX(${tilt}deg) scale(${Math.max(scale, 0.94)}) translateZ(0)`
-            card.style.boxShadow = `0 ${8 + Math.abs(tilt) * 2}px ${30 + Math.abs(tilt) * 4}px rgba(0,0,0,${0.03 + Math.abs(distanceFromCenter) * 0.05})`
-          })
-          ticking = false
-        })
-        ticking = true
-      }
-    }
-
-    window.addEventListener('scroll', handleScroll, { passive: true })
-    // Ejecutar un pequeño delay inicial para que el DOM esté listo tras el loading
-    const timer = setTimeout(handleScroll, 100)
-
-    return () => {
-      window.removeEventListener('scroll', handleScroll)
-      clearTimeout(timer)
-    }
-  }, [sessions])
-
   function showToast(msg) {
     setToast(msg)
     setTimeout(() => setToast(null), 3000)
@@ -96,7 +56,7 @@ function Feed() {
         .select('*, books(title, author, cover_url, genre, year, total_pages, current_page, finished, rating)')
         .in('user_id', allIds)
         .order('created_at', { ascending: false })
-        .limit(25) // CORRECCIÓN IPHONE: Reducido de 50 a 25 para no saturar la memoria inicial de iOS
+        .limit(25)
 
       if (sessionData) {
         const uniqueUserIds = [...new Set(sessionData.map(s => s.user_id))]
@@ -214,62 +174,54 @@ function Feed() {
   return (
     <div className="min-h-screen bg-[#f8f6f2] pb-36 antialiased" style={{ fontFamily: "'Inter', -apple-system, sans-serif" }}>
 
-      {/* Optimización de CSS tridimensional adaptada para WebKit/Safari iOS */}
+      {/* Estilos CSS consolidados y optimizados para GPU */}
       <style>{`
-        .book-wrapper {
-          perspective: 1000px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 100%;
-          height: 100%;
+        @keyframes cardEntrance {
+          from {
+            opacity: 0;
+            transform: translateY(24px) scale(0.97);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
         }
-        .book-3d {
-          width: 140px;
-          height: 205px;
+
+        .feed-card-native {
+          animation: cardEntrance 0.55s cubic-bezier(0.215, 0.610, 0.355, 1) both;
+          will-change: transform, opacity;
+        }
+
+        /* Contenedor plano y elegante del libro */
+        .book-flat-container {
           position: relative;
-          transform-style: preserve-3d;
-          transform: rotateY(-16deg) rotateX(6deg) translateZ(0);
-          transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-          will-change: transform;
+          width: 135px;
+          height: 195px;
+          transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .book-wrapper:hover .book-3d {
-          transform: rotateY(-2deg) rotateX(2deg) scale(1.03) translateZ(0);
+
+        /* Pequeño feedback visual nativo si el usuario pulsa la tarjeta */
+        .feed-card-native:active .book-flat-container {
+          transform: scale(1.02) rotate(-1deg);
         }
-        .book-front {
-          position: absolute;
+
+        .book-flat-cover {
           width: 100%;
           height: 100%;
-          left: 0;
-          top: 0;
-          background-size: cover;
-          background-position: center;
-          border-radius: 2px 4px 4px 2px;
-          box-shadow: inset 4px 0 10px rgba(0,0,0,0.15);
-          transform: translateZ(9px);
-          z-index: 2;
-          background-color: #fff;
+          object-cover: cover;
+          border-radius: 4px 6px 6px 4px;
+          box-shadow: 0 10px 25px rgba(0,0,0,0.2), inset 2px 0 5px rgba(255,255,255,0.2);
         }
-        .book-spine {
+
+        /* Simulación sutil de las páginas/lomo del libro en vista plana */
+        .book-flat-spine-effect {
           position: absolute;
-          width: 18px;
-          height: 100%;
-          left: 0;
           top: 0;
-          transform: rotateY(-90deg) translateZ(9px);
-          transform-origin: left center;
-          box-shadow: inset -2px 0 5px rgba(0,0,0,0.3);
-          z-index: 1;
-        }
-        .book-shadow {
-          position: absolute;
-          width: 100%;
-          height: 100%;
-          background: rgba(0, 0, 0, 0.22);
-          filter: blur(12px);
-          transform: translateZ(-20px) rotateY(-12deg) scale(0.92);
-          top: 12px;
-          left: 15px;
+          left: 0;
+          bottom: 0;
+          width: 5px;
+          background: linear-gradient(to right, rgba(0,0,0,0.2) 0%, transparent 100%);
+          border-radius: 4px 0 0 4px;
           pointer-events: none;
         }
       `}</style>
@@ -346,18 +298,16 @@ function Feed() {
             <p className="text-stone-300 text-xs mt-1">Sigue a otros lectores para ver su activity</p>
           </div>
         ) : (
-          sessions.map(session => {
+          sessions.map((session, index) => {
             const currentGenre = GENRE_STYLES[session.books?.genre] || GENRE_STYLES.otro
 
             return (
               <div
                 key={session.id}
-                className="book-card-3d mx-5 bg-white rounded-[2.5rem] overflow-hidden border border-stone-100 shadow-md flex flex-col justify-between"
+                className="feed-card-native mx-5 bg-white rounded-[2.5rem] overflow-hidden border border-stone-100 shadow-md flex flex-col justify-between"
                 style={{
                   minHeight: '82vh',
-                  transition: 'transform 0.1s ease-out, box-shadow 0.1s ease-out', // Acelerado el suavizado para pantallas ProMotion (120Hz)
-                  willChange: 'transform',
-                  transformOrigin: 'center center',
+                  animationDelay: `${index * 0.06}s` // Efecto cascada ultra veloz y fluido
                 }}
               >
                 {/* Contenedor visual del libro */}
@@ -395,21 +345,24 @@ function Feed() {
                     </span>
                   </div>
 
-                  {/* Renderizado 3D real del libro */}
+                  {/* Renderizado Plano Limpio (Sin 3D pesado) */}
                   <div className="relative z-10 w-full h-full max-h-[42vh] px-10 py-4 flex items-center justify-center">
-                    <div className="book-wrapper">
-                      <div className="book-shadow" />
-                      <div className="book-3d">
-                        {session.books?.cover_url ? (
-                          <div className="book-front" style={{ backgroundImage: `url(${session.books.cover_url})` }} />
-                        ) : (
-                          <div className={`book-front ${currentGenre.color} flex flex-col items-center justify-center p-3 text-center border`}>
-                            <span className="text-2xl mb-1">{currentGenre.icon}</span>
-                            <p className="text-[10px] font-black uppercase tracking-wider line-clamp-3 leading-tight">{session.books?.title}</p>
-                          </div>
-                        )}
-                        <div className="book-spine" style={{ backgroundColor: currentGenre.spine }} />
-                      </div>
+                    <div className="book-flat-container">
+                      {session.books?.cover_url ? (
+                        <img 
+                          src={session.books.cover_url} 
+                          alt={session.books.title} 
+                          className="book-flat-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className={`book-flat-cover ${currentGenre.color} flex flex-col items-center justify-center p-4 text-center border border-stone-200/50`}>
+                          <span className="text-3xl mb-2">{currentGenre.icon}</span>
+                          <p className="text-[11px] font-black uppercase tracking-wider line-clamp-4 leading-tight">{session.books?.title}</p>
+                        </div>
+                      )}
+                      <div className="book-flat-shadow-effect" />
+                      <div className="book-flat-spine-effect" />
                     </div>
                   </div>
 
@@ -506,7 +459,7 @@ function Feed() {
                       className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold transition-all ${
                         likes[session.id]?.liked
                           ? 'bg-red-50 text-red-500 border border-red-100'
-                          : 'bg-stone-50 text-stone-400 border border-stone-100 hover:border-red-100 hover:text-red-400'
+                          : 'bg-stone-50 text-stone-400 border border-stone-100'
                       }`}
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill={likes[session.id]?.liked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -518,7 +471,7 @@ function Feed() {
                     {session.user_id !== user?.id && (
                       <button
                         onClick={() => handleAddToList(session)}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold bg-stone-50 text-stone-400 border border-stone-100 hover:border-orange-200 hover:text-orange-500 transition-all"
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold bg-stone-50 text-stone-400 border border-stone-100 active:bg-stone-100 transition-all"
                       >
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                           <line x1="12" y1="5" x2="12" y2="19"/>
@@ -544,7 +497,7 @@ function Feed() {
           { label: 'Stats', path: '/stats', active: false, icon: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
           { label: 'Perfil', path: '/profile', active: false, icon: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> },
         ].map(item => (
-          <button key={item.path} onClick={() => navigate(item.path)} className={`flex-1 py-2 flex flex-col items-center gap-1 rounded-full transition-all ${item.active ? 'text-orange-500' : 'text-stone-400 hover:text-stone-700'}`}>
+          <button key={item.path} onClick={() => navigate(item.path)} className={`flex-1 py-2 flex flex-col items-center gap-1 rounded-full transition-all ${item.active ? 'text-orange-500' : 'text-stone-400'}`}>
             {item.icon(item.active)}
             <span className="text-[9px] font-semibold tracking-tight">{item.label}</span>
           </button>
