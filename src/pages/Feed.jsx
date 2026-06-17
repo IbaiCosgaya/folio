@@ -8,7 +8,7 @@ const GENRE_STYLES = {
   thriller:       { color: 'bg-red-100 text-red-500',      icon: '🔪', spine: '#dc2626' },
   romance:        { color: 'bg-pink-100 text-pink-500',     icon: '💕', spine: '#db2777' },
   historica:      { color: 'bg-amber-100 text-amber-600',  icon: '⚔️', spine: '#d97706' },
-  terror:         { color: 'bg-orange-100 text-orange-500',icon: '👻', spine: '#ea580c' },
+  terror:         { color: 'bg-orange-100 text-orange-500',icon: 'ghost', spine: '#ea580c' },
   no_ficcion:     { color: 'bg-teal-100 text-teal-500',    icon: '📚', spine: '#0d9488' },
   autobiografia:  { color: 'bg-green-100 text-green-500',  icon: '✍️', spine: '#16a34a' },
   otro:           { color: 'bg-stone-100 text-stone-500',  icon: '📖', spine: '#57534e' },
@@ -25,6 +25,11 @@ function Feed() {
   const [likes, setLikes] = useState({})
   const [toast, setToast] = useState(null)
   
+  // ESTADOS LONG TOUCH & DETALLES
+  const [selectedSession, setSelectedSession] = useState(null)
+  const [isClosing, setIsClosing] = useState(false)
+  const longPressTimer = useRef(null)
+
   const navigate = useNavigate()
 
   useEffect(() => { fetchFeed() }, [])
@@ -165,6 +170,26 @@ function Feed() {
     return `hace ${Math.floor(diff / 86400)}d`
   }
 
+  // --- CONTROL GESTOS TACTILES ---
+  const handleTouchStart = (session) => {
+    if (selectedSession) return
+    longPressTimer.current = setTimeout(() => {
+      setSelectedSession(session)
+    }, 450)
+  }
+
+  const handleTouchEnd = () => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current)
+  }
+
+  const closeDetails = () => {
+    setIsClosing(true)
+    setTimeout(() => {
+      setSelectedSession(null)
+      setIsClosing(false)
+    }, 400)
+  }
+
   if (loading) return (
     <div className="min-h-screen bg-[#f8f6f2] flex items-center justify-center">
       <p className="text-stone-400 text-sm tracking-wide">cargando...</p>
@@ -172,66 +197,106 @@ function Feed() {
   )
 
   return (
-    <div className="min-h-screen bg-[#f8f6f2] pb-36 antialiased" style={{ fontFamily: "'Inter', -apple-system, sans-serif" }}>
+    <div className="min-h-screen bg-[#f8f6f2] pb-36 antialiased select-none" style={{ fontFamily: "'Inter', -apple-system, sans-serif" }}>
 
-      {/* Estilos CSS consolidados y optimizados para GPU */}
       <style>{`
         @keyframes cardEntrance {
-          from {
-            opacity: 0;
-            transform: translateY(24px) scale(0.97);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
+          from { opacity: 0; transform: translateY(24px) scale(0.97); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
         }
-
         .feed-card-native {
           animation: cardEntrance 0.55s cubic-bezier(0.215, 0.610, 0.355, 1) both;
           will-change: transform, opacity;
         }
 
-        /* Contenedor plano y elegante del libro */
         .book-flat-container {
           position: relative;
           width: 135px;
           height: 195px;
+          perspective: 1000px;
+          transform-style: preserve-3d;
           transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+          cursor: pointer;
         }
-
-        /* Pequeño feedback visual nativo si el usuario pulsa la tarjeta */
-        .feed-card-native:active .book-flat-container {
-          transform: scale(1.02) rotate(-1deg);
+        .book-flat-container:active {
+          transform: scale(1.08) rotateY(-18deg) rotateZ(-2deg);
         }
 
         .book-flat-cover {
-          width: 100%;
-          height: 100%;
-          object-cover: cover;
+          width: 100%; height: 100%; object-fit: cover;
           border-radius: 4px 6px 6px 4px;
-          box-shadow: 0 10px 25px rgba(0,0,0,0.2), inset 2px 0 5px rgba(255,255,255,0.2);
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14), inset 1px 0 3px rgba(255,255,255,0.2);
+          transition: box-shadow 0.4s ease;
+        }
+        .book-flat-container:active .book-flat-cover {
+          box-shadow: 14px 20px 36px rgba(0, 0, 0, 0.3), 2px 4px 10px rgba(0, 0, 0, 0.15);
         }
 
-        /* Simulación sutil de las páginas/lomo del libro en vista plana */
         .book-flat-spine-effect {
-          position: absolute;
-          top: 0;
-          left: 0;
-          bottom: 0;
-          width: 5px;
-          background: linear-gradient(to right, rgba(0,0,0,0.2) 0%, transparent 100%);
-          border-radius: 4px 0 0 4px;
+          position: absolute; top: 0; left: 0; bottom: 0; width: 5px;
+          background: linear-gradient(to right, rgba(0,0,0,0.18) 0%, transparent 100%);
+          border-radius: 4px 0 0 4px; pointer-events: none;
+        }
+
+        /* FIX DE BLURS USANDO DEGRADADO MASK-IMAGE */
+        .blur-header-mask {
+          position: fixed; top: 0; left: 0; right: 0; z-index: 35; h-28;
+          background: rgba(248,246,242, 0.85);
+          backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+          mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+          -webkit-mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
           pointer-events: none;
         }
+        .blur-footer-mask {
+          position: fixed; bottom: 0; left: 0; right: 0; z-index: 35; h-36;
+          background: rgba(248,246,242, 0.85);
+          backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+          mask-image: linear-gradient(to top, black 55%, transparent 100%);
+          -webkit-mask-image: linear-gradient(to top, black 55%, transparent 100%);
+          pointer-events: none;
+        }
+
+        /* ANIMACIONES EN MODO OSCURO (LONG PRESS) */
+        @keyframes bIn {
+          from { opacity: 0; backdrop-filter: blur(0px); -webkit-backdrop-filter: blur(0px); }
+          to { opacity: 1; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+        }
+        @keyframes bOut {
+          from { opacity: 1; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+          to { opacity: 0; backdrop-filter: blur(0px); -webkit-backdrop-filter: blur(0px); }
+        }
+        .anim-bg-in { animation: bIn 0.4s ease forwards; }
+        .anim-bg-out { animation: bOut 0.4s ease forwards; }
+
+        @keyframes bkOpen {
+          0% { transform: scale(0.75) rotateY(0deg); opacity: 0; }
+          100% { transform: scale(1) rotateY(-24deg) rotateX(6deg); opacity: 1; }
+        }
+        @keyframes bkClose {
+          from { transform: scale(1) rotateY(-24deg) rotateX(6deg); opacity: 1; }
+          to { transform: scale(0.6) rotateY(0deg); opacity: 0; }
+        }
+        .anim-book-open { animation: bkOpen 0.48s cubic-bezier(0.19, 1, 0.22, 1) forwards; transform-style: preserve-3d; perspective: 1000px; }
+        .anim-book-close { animation: bkClose 0.35s cubic-bezier(0.55, 0, 1, 0.45) forwards; }
+
+        @keyframes panelUp {
+          from { transform: translateY(100%); }
+          to { transform: translateY(0); }
+        }
+        @keyframes panelDown {
+          from { transform: translateY(0); }
+          to { transform: translateY(100%); }
+        }
+        .anim-panel-in { animation: panelUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .anim-panel-out { animation: panelDown 0.35s cubic-bezier(0.55, 0, 1, 0.45) forwards; }
       `}</style>
 
-      {/* Blurs fijos optimizados en iOS */}
-      <div className="fixed top-0 left-0 right-0 z-35 h-24 pointer-events-none" style={{ background: 'linear-gradient(to bottom, rgba(248,246,242,1) 0%, rgba(248,246,242,0.8) 60%, transparent 100%)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', maskImage: 'linear-gradient(to bottom, black 0%, black 40%, transparent 100%)', WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 40%, transparent 100%)' }} />
-      <div className="fixed bottom-0 left-0 right-0 z-35 h-32 pointer-events-none" style={{ background: 'linear-gradient(to top, rgba(248,246,242,1) 0%, rgba(248,246,242,0.8) 60%, transparent 100%)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', maskImage: 'linear-gradient(to top, black 0%, black 40%, transparent 100%)', WebkitMaskImage: 'linear-gradient(to top, black 0%, black 40%, transparent 100%)' }} />
+      {/* Máscaras de Desenfoque Corregidas sin saltos visuales */}
+      <div className="blur-header-mask h-24" />
+      <div className="blur-footer-mask h-32" />
 
       {toast && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-stone-900 text-white text-sm font-semibold px-5 py-3 rounded-full shadow-lg transition-all animate-bounce">
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-stone-900 text-white text-sm font-semibold px-5 py-3 rounded-full shadow-lg">
           {toast}
         </div>
       )}
@@ -249,53 +314,33 @@ function Feed() {
         </div>
         <div className="flex items-center gap-3">
           {user?.id === '581dd0d6-6240-461a-90b7-224f74d577ab' && (
-            <button onClick={() => navigate('/admin')} className="text-[11px] text-stone-400 tracking-widest uppercase font-semibold">
-              admin
-            </button>
+            <button onClick={() => navigate('/admin')} className="text-[11px] text-stone-400 tracking-widest uppercase font-semibold">admin</button>
           )}
           <button onClick={() => supabase.auth.signOut().then(() => navigate('/'))} className="w-7 h-7 rounded-full bg-stone-200/60 flex items-center justify-center text-stone-500 text-[10px]">✕</button>
         </div>
       </div>
 
-      {/* Saludo */}
       <div className="px-5 pb-4">
         <p className="text-[22px] font-bold text-stone-900 tracking-tight">Hola, {myProfile?.username || 'lector'} 👋</p>
-        <p className="text-stone-400 text-[13px] mt-0.5 italic">¿qué están leyendo hoy?</p>
+        <p className="text-stone-400 text-[13px] mt-0.5 italic">Manten pulsada la portada para inspeccionar</p>
       </div>
 
       {/* Buscador */}
-      <div className="px-5 mb-6 relative z-50">
-        <div className="relative">
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 text-sm">🔍</span>
-          <input
-            type="text"
-            placeholder="Buscar lectores..."
-            value={searchQuery}
-            onChange={e => handleSearch(e.target.value)}
-            className="w-full bg-white/70 text-stone-800 placeholder-stone-400 rounded-2xl pl-10 pr-4 py-3 text-sm outline-none border border-stone-200/60 focus:border-stone-300 transition-all"
-            style={{ backdropFilter: 'blur(10px)' }}
-          />
-          {searchResults.length > 0 && (
-            <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl border border-stone-200/60 overflow-hidden z-50 shadow-lg">
-              {searchResults.map(profile => (
-                <div key={profile.id} onClick={() => { navigate(`/user/${profile.id}`); setSearchQuery(''); setSearchResults([]) }} className="flex items-center gap-3 px-4 py-3 hover:bg-stone-50 cursor-pointer border-b border-stone-100 last:border-0">
-                  <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-xs font-bold text-orange-600">
-                    {profile.username?.[0]?.toUpperCase() || '?'}
-                  </div>
-                  <p className="text-sm font-semibold text-stone-800">{profile.username}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      <div className="px-5 mb-6 relative z-30">
+        <input
+          type="text"
+          placeholder="Buscar lectores..."
+          value={searchQuery}
+          onChange={e => handleSearch(e.target.value)}
+          className="w-full bg-white/80 text-stone-800 placeholder-stone-400 rounded-2xl px-4 py-3 text-sm outline-none border border-stone-200/60"
+        />
       </div>
 
-      {/* Feed — Tarjetas */}
+      {/* Feed principal */}
       <div className="space-y-8 max-w-md mx-auto">
         {sessions.length === 0 ? (
           <div className="mx-5 bg-white rounded-3xl p-12 text-center border border-stone-200/40">
             <p className="text-stone-400 text-sm">Tu feed está vacío</p>
-            <p className="text-stone-300 text-xs mt-1">Sigue a otros lectores para ver su activity</p>
           </div>
         ) : (
           sessions.map((session, index) => {
@@ -305,183 +350,103 @@ function Feed() {
               <div
                 key={session.id}
                 className="feed-card-native mx-5 bg-white rounded-[2.5rem] overflow-hidden border border-stone-100 shadow-md flex flex-col justify-between"
-                style={{
-                  minHeight: '82vh',
-                  animationDelay: `${index * 0.06}s` // Efecto cascada ultra veloz y fluido
-                }}
+                style={{ minHeight: '82vh', animationDelay: `${index * 0.06}s` }}
               >
-                {/* Contenedor visual del libro */}
+                {/* Render multimedia superior */}
                 <div className="relative w-full overflow-hidden flex-1 flex items-center justify-center" style={{ minHeight: '52vh' }}>
-                  
                   {session.books?.cover_url ? (
-                    <div
-                      className="absolute inset-0 bg-cover bg-center"
-                      style={{
-                        backgroundImage: `url(${session.books.cover_url})`,
-                        filter: 'blur(30px) brightness(0.65)',
-                        transform: 'scale(1.25)'
-                      }}
-                    />
+                    <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${session.books.cover_url})`, filter: 'blur(30px) brightness(0.65)', transform: 'scale(1.25)' }} />
                   ) : (
                     <div className={`absolute inset-0 ${currentGenre.color} opacity-40`} />
                   )}
 
-                  <div className="absolute top-0 left-0 right-0 z-20 h-36" style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 50%, transparent 100%)' }} />
-
-                  {/* Perfil del Publicador */}
-                  <div className="absolute top-6 left-6 z-30 flex items-center gap-3 cursor-pointer" onClick={() => navigate(`/user/${session.user_id}`)}>
-                    <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-sm font-bold text-white border border-white/30 shadow-sm">
+                  <div className="absolute top-6 left-6 z-30 flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-sm font-bold text-white border border-white/30">
                       {session.profiles?.username?.[0]?.toUpperCase() || '?'}
                     </div>
                     <div>
                       <p className="text-[15px] font-bold text-white leading-tight drop-shadow-md">{session.profiles?.username || 'Usuario'}</p>
-                      <p className="text-white/75 text-[11px] font-medium mt-0.5 drop-shadow-sm">{timeAgo(session.created_at)}</p>
+                      <p className="text-white/75 text-[11px] font-medium mt-0.5">{timeAgo(session.created_at)}</p>
                     </div>
                   </div>
 
-                  <div className="absolute top-6 right-6 z-30">
-                    <span className="text-base p-2 rounded-full bg-white/20 backdrop-blur-md border border-white/30 block shadow-sm">
-                      {currentGenre.icon}
-                    </span>
-                  </div>
-
-                  {/* Renderizado Plano Limpio (Sin 3D pesado) */}
+                  {/* Libro de la Tarjeta */}
                   <div className="relative z-10 w-full h-full max-h-[42vh] px-10 py-4 flex items-center justify-center">
-                    <div className="book-flat-container">
+                    <div 
+                      className="book-flat-container"
+                      onTouchStart={() => handleTouchStart(session)}
+                      onTouchEnd={handleTouchEnd}
+                      onMouseDown={() => handleTouchStart(session)}
+                      onMouseUp={handleTouchEnd}
+                      onMouseLeave={handleTouchEnd}
+                    >
                       {session.books?.cover_url ? (
-                        <img 
-                          src={session.books.cover_url} 
-                          alt={session.books.title} 
-                          className="book-flat-cover"
-                          loading="lazy"
-                        />
+                        <img src={session.books.cover_url} alt={session.books.title} className="book-flat-cover" loading="lazy" />
                       ) : (
-                        <div className={`book-flat-cover ${currentGenre.color} flex flex-col items-center justify-center p-4 text-center border border-stone-200/50`}>
+                        <div className={`book-flat-cover ${currentGenre.color} flex flex-col items-center justify-center p-4 text-center`}>
                           <span className="text-3xl mb-2">{currentGenre.icon}</span>
-                          <p className="text-[11px] font-black uppercase tracking-wider line-clamp-4 leading-tight">{session.books?.title}</p>
+                          <p className="text-[11px] font-black uppercase tracking-wider line-clamp-4">{session.books?.title}</p>
                         </div>
                       )}
-                      <div className="book-flat-shadow-effect" />
                       <div className="book-flat-spine-effect" />
                     </div>
                   </div>
-
                   <div className="absolute bottom-0 left-0 right-0 z-20 h-32" style={{ background: 'linear-gradient(to top, #ffffff 0%, rgba(255,255,255,0.5) 40%, transparent 100%)' }} />
                 </div>
 
-                {/* Detalles de lectura */}
+                {/* Bloque Completo de Información en Tarjeta */}
                 <div className="px-6 pb-7 bg-white relative z-30">
-                  <h3 className="text-xl font-black text-stone-900 tracking-tight leading-snug">{session.books?.title}</h3>
+                  <span className="text-[10px] font-bold tracking-widest uppercase bg-stone-100 text-stone-500 px-2.5 py-1 rounded-md">
+                    {(session.books?.genre || 'otro').replace('_', ' ')}
+                  </span>
+
+                  <h3 className="text-xl font-black text-stone-900 tracking-tight mt-2">{session.books?.title}</h3>
                   <p className="text-stone-400 text-sm mt-0.5 font-medium">
                     {session.books?.author}
                     {session.books?.year && <span className="text-stone-300 font-normal"> · {session.books.year}</span>}
                   </p>
 
+                  {/* Progreso de la sesión */}
                   {session.books?.finished ? (
-                    <div className="mt-4">
-                      <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-orange-100 rounded-2xl px-5 py-4 text-center">
-                        <p className="text-2xl mb-1">🎉</p>
-                        <p className="text-sm font-black text-stone-900">¡Libro terminado!</p>
-                        <p className="text-stone-400 text-xs mt-0.5">{session.books.total_pages} páginas · {session.books.genre?.replace('_', ' ')}</p>
-                        {session.books?.rating && (
-                          <div className="flex justify-center gap-1 mt-2">
-                            {[1, 2, 3, 4, 5].map(star => (
-                              <span key={star} className={`text-sm ${star <= session.books.rating ? 'text-amber-400' : 'text-stone-200'}`}>★</span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap gap-2 mt-3">
-                        <span className="text-xs font-bold px-3 py-1.5 bg-orange-50 text-orange-600 rounded-full border border-orange-100">
-                          <b>📖 {session.pages_read} pág. hoy</b>
-                        </span>
-                        {session.minutes_read && (
-                          <span className="text-xs font-bold px-3 py-1.5 bg-stone-50 text-stone-500 rounded-full border border-stone-200">
-                            ⏱ {session.minutes_read} min
-                          </span>
-                        )}
-                      </div>
+                    <div className="mt-4 bg-gradient-to-r from-amber-50 to-orange-50 border border-orange-100 rounded-2xl px-4 py-3 text-center">
+                      <p className="text-sm font-black text-stone-900">🎉 ¡Libro Completado!</p>
                     </div>
                   ) : (
-                    <div className="mt-4">
-                      {session.books?.total_pages > 0 && (
-                        <>
-                          <div className="flex justify-between text-[11px] text-stone-400 mb-1.5 font-medium">
-                            <span>Progreso</span>
-                            <span className="font-bold text-orange-500">
-                              {Math.round((session.books.current_page / session.books.total_pages) * 100)}%
-                            </span>
-                          </div>
-                          <div className="w-full bg-stone-100 rounded-full h-2 relative flex items-center">
-                            <div
-                              className={`h-2 rounded-full transition-all duration-500 ${
-                                session.books?.genre === 'fantasia' ? 'bg-purple-400' :
-                                session.books?.genre === 'ciencia_ficcion' ? 'bg-blue-400' :
-                                session.books?.genre === 'thriller' ? 'bg-red-400' :
-                                session.books?.genre === 'romance' ? 'bg-pink-400' :
-                                session.books?.genre === 'historica' ? 'bg-amber-400' :
-                                session.books?.genre === 'terror' ? 'bg-orange-400' :
-                                session.books?.genre === 'no_ficcion' ? 'bg-teal-400' :
-                                session.books?.genre === 'autobiografia' ? 'bg-green-400' :
-                                'bg-stone-400'
-                              }`}
-                              style={{ width: `${Math.max(Math.min((session.books.current_page / session.books.total_pages) * 100, 100), 2)}%` }}
-                            />
-                            <span
-                              className="absolute text-lg leading-none transition-all duration-500 z-10"
-                              style={{
-                                left: `calc(${Math.min((session.books.current_page / session.books.total_pages) * 100, 98)}% - 10px)`,
-                                top: '-8px'
-                              }}
-                            >
-                              {currentGenre.icon}
-                            </span>
-                          </div>
-                        </>
-                      )}
-                      <div className="flex flex-wrap gap-2 mt-4">
-                        <span className="text-xs font-bold px-3 py-1.5 bg-orange-50 text-orange-600 rounded-full border border-orange-100">
-                          📖 {session.pages_read} pág. hoy
-                        </span>
-                        {session.minutes_read && (
-                          <span className="text-xs font-bold px-3 py-1.5 bg-stone-50 text-stone-500 rounded-full border border-stone-200">
-                            ⏱ {session.minutes_read} min
-                          </span>
-                        )}
+                    session.books?.total_pages > 0 && (
+                      <div className="mt-4">
+                        <div className="flex justify-between text-[11px] text-stone-400 mb-1">
+                          <span>Progreso Global</span>
+                          <span className="font-bold text-orange-500">{Math.round((session.books.current_page / session.books.total_pages) * 100)}%</span>
+                        </div>
+                        <div className="w-full bg-stone-100 rounded-full h-1.5 overflow-hidden">
+                          <div 
+                            className={`h-full transition-all duration-500 ${
+                              session.books?.genre === 'fantasia' ? 'bg-purple-500' :
+                              session.books?.genre === 'historica' ? 'bg-amber-500' : 'bg-orange-500'
+                            }`}
+                            style={{ width: `${(session.books.current_page / session.books.total_pages) * 100}%` }}
+                          />
+                        </div>
                       </div>
-                    </div>
+                    )
                   )}
 
-                  {/* Acciones */}
-                  <div className="flex items-center gap-2 mt-4 pt-4 border-t border-stone-100">
-                    <button
-                      onClick={() => handleLike(session.id)}
-                      className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold transition-all ${
-                        likes[session.id]?.liked
-                          ? 'bg-red-50 text-red-500 border border-red-100'
-                          : 'bg-stone-50 text-stone-400 border border-stone-100'
-                      }`}
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill={likes[session.id]?.liked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-                      </svg>
-                      <span>{likes[session.id]?.count || 0}</span>
-                    </button>
+                  <div className="flex flex-wrap gap-2 mt-4">
+                    <span className="text-xs font-bold px-3 py-1.5 bg-orange-50 text-orange-600 rounded-full border border-orange-100">📖 {session.pages_read} pág. hoy</span>
+                    {session.minutes_read && <span className="text-xs font-bold px-3 py-1.5 bg-stone-50 text-stone-500 rounded-full border border-stone-200">⏱ {session.minutes_read} min</span>}
+                  </div>
 
+                  {/* Botones de acción inferiores */}
+                  <div className="flex items-center gap-2 mt-4 pt-4 border-t border-stone-100">
+                    <button onClick={() => handleLike(session.id)} className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold transition-all ${likes[session.id]?.liked ? 'bg-red-50 text-red-500 border border-red-100' : 'bg-stone-50 text-stone-400'}`}>
+                      ❤ <span>{likes[session.id]?.count || 0}</span>
+                    </button>
                     {session.user_id !== user?.id && (
-                      <button
-                        onClick={() => handleAddToList(session)}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold bg-stone-50 text-stone-400 border border-stone-100 active:bg-stone-100 transition-all"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                          <line x1="12" y1="5" x2="12" y2="19"/>
-                          <line x1="5" y1="12" x2="19" y2="12"/>
-                        </svg>
-                        <span>Mi lista</span>
+                      <button onClick={() => handleAddToList(session)} className="text-xs font-bold px-4 py-2 bg-stone-50 text-stone-500 rounded-full border border-stone-100">
+                        + Mi lista
                       </button>
                     )}
                   </div>
-
                 </div>
               </div>
             )
@@ -489,17 +454,145 @@ function Feed() {
         )}
       </div>
 
+      {/* --- MODO DETALLE EN OSCURO: CON CONTENIDO EXPANDIBLE DE RECOMENDACIÓN --- */}
+      {selectedSession && (
+        <div 
+          className={`fixed inset-0 z-50 flex flex-col justify-end bg-stone-950/85 transition-all ${isClosing ? 'anim-bg-out' : 'anim-bg-in'}`}
+          style={{ backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}
+        >
+          {/* Libro flotante en la mitad superior */}
+          <div className="flex-1 flex flex-col items-center justify-center px-6 relative">
+            <button 
+              onClick={closeDetails} 
+              className="absolute top-6 right-6 w-10 h-10 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-white text-base hover:bg-white/20 active:scale-90 transition-transform"
+            >
+              ✕
+            </button>
+            
+            <div 
+              className={`w-[145px] h-[210px] ${isClosing ? 'anim-book-close' : 'anim-book-open'}`}
+              style={{ boxShadow: '0 35px 65px rgba(0,0,0,0.65), 5px 15px 25px rgba(0,0,0,0.4)' }}
+            >
+              {selectedSession.books?.cover_url ? (
+                <img src={selectedSession.books.cover_url} alt="" className="w-full h-full object-cover rounded-r-md rounded-l-sm" />
+              ) : (
+                <div className="w-full h-full bg-stone-800 flex items-center justify-center rounded-r-md"><span className="text-3xl">📖</span></div>
+              )}
+              <div className="absolute top-0 left-0 bottom-0 w-5 bg-gradient-to-r from-black/40 to-transparent pointer-events-none" />
+            </div>
+          </div>
+
+          {/* PANEL INFERIOR INTEGRADO: Limitado al tamaño simétrico de tus tarjetas de feed (max-w-md mx-auto) */}
+          <div 
+            className={`w-full max-w-md mx-auto bg-white rounded-t-[2.5rem] md:rounded-b-[2.5rem] md:mb-6 shadow-2xl flex flex-col overflow-hidden ${
+              isClosing ? 'anim-panel-out' : 'anim-panel-in'
+            }`}
+            style={{ maxHeight: '62vh', minHeight: '55vh' }}
+          >
+            {/* Cabecera fija interna */}
+            <div className="px-6 pt-6 pb-3 border-b border-stone-100 flex items-center justify-between flex-shrink-0">
+              <div>
+                <span className="text-[9px] font-black tracking-widest uppercase bg-orange-100 text-orange-600 px-2 py-0.5 rounded">
+                  {selectedSession.books?.genre || 'General'}
+                </span>
+                <h2 className="text-xl font-black text-stone-900 tracking-tight mt-1 truncate max-w-[220px]">
+                  {selectedSession.books?.title}
+                </h2>
+              </div>
+              <button onClick={closeDetails} className="text-xs font-bold text-stone-400 bg-stone-100 px-3 py-1.5 rounded-full hover:bg-stone-200 transition-colors">
+                Cerrar
+              </button>
+            </div>
+
+            {/* Contenedor scrolleable interno */}
+            <div className="overflow-y-auto flex-1 p-6 space-y-6 text-stone-800 scrollbar-none">
+              
+              {/* Bloque Estadístico */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-stone-50 p-3.5 rounded-2xl border border-stone-100">
+                  <p className="text-[10px] uppercase text-stone-400 font-bold tracking-wide">PÁGINAS LEÍDAS</p>
+                  <p className="text-lg font-black text-stone-800 mt-0.5">+{selectedSession.pages_read} <span className="text-xs text-stone-400 font-normal">pags</span></p>
+                </div>
+                <div className="bg-stone-50 p-3.5 rounded-2xl border border-stone-100">
+                  <p className="text-[10px] uppercase text-stone-400 font-bold tracking-wide">TIEMPO DEDICADO</p>
+                  <p className="text-lg font-black text-stone-800 mt-0.5">{selectedSession.minutes_read || '--'} <span className="text-xs text-stone-400 font-normal">min</span></p>
+                </div>
+              </div>
+
+              {/* Sección 1: Sinopsis */}
+              <div>
+                <h4 className="text-xs font-bold uppercase text-stone-400 tracking-wider mb-2">Sinopsis</h4>
+                <p className="text-sm text-stone-600 leading-relaxed bg-stone-50 p-4 rounded-2xl border border-stone-100">
+                  Esta es una sinopsis provisional del libro. Próximamente se sincronizará automáticamente con metadatos extendidos de la base de datos para ofrecer una inmersión completa al lector antes de interactuar con el recomendador.
+                </p>
+              </div>
+
+              {/* Sección 2: Recomendador Content-Based */}
+              <div>
+                <div className="flex items-center gap-1.5 mb-2">
+                  <h4 className="text-xs font-bold uppercase text-stone-400 tracking-wider">Libros Similares</h4>
+                  <span className="text-[9px] bg-blue-50 text-blue-600 font-extrabold px-1.5 py-0.5 rounded">Content-Based AI</span>
+                </div>
+                <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="min-w-[105px] w-[105px] bg-stone-50 p-2 rounded-xl border border-stone-100 text-center">
+                      <div className="w-full h-28 bg-stone-200 rounded-md mb-1.5 flex items-center justify-center text-stone-400 text-xs">📖</div>
+                      <p className="text-[10px] font-bold text-stone-700 truncate">Libro similar {i}</p>
+                      <p className="text-[9px] text-stone-400 truncate">94% Match</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sección 3: Mismo Género */}
+              <div>
+                <h4 className="text-xs font-bold uppercase text-stone-400 tracking-wider mb-2">Más de este género</h4>
+                <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="min-w-[105px] w-[105px] bg-stone-50 p-2 rounded-xl border border-stone-100 text-center">
+                      <div className="w-full h-28 bg-stone-200 rounded-md mb-1.5 flex items-center justify-center text-stone-400 text-xs">🔮</div>
+                      <p className="text-[10px] font-bold text-stone-700 truncate">Ejemplar {i}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sección 4: Autores Relacionados */}
+              <div className="pb-4">
+                <h4 className="text-xs font-bold uppercase text-stone-400 tracking-wider mb-2">Autores Parecidos</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  {['Autor Relacionado A', 'Autor Relacionado B'].map((author, idx) => (
+                    <div key={idx} className="bg-stone-50 px-3 py-2.5 rounded-xl border border-stone-100 flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full bg-stone-200 flex-shrink-0" />
+                      <p className="text-xs font-semibold text-stone-700 truncate">{author}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+
+            {/* Footer Fijo del Panel */}
+            <div className="p-4 bg-white border-t border-stone-100 flex-shrink-0">
+              <button onClick={closeDetails} className="w-full bg-stone-900 text-white font-bold py-3.5 rounded-2xl shadow-md text-sm active:scale-[0.99] transition-all">
+                Volver al Feed
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Navbar flotante */}
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 px-3 py-2 rounded-full border border-white/40" style={{ background: 'rgba(255, 255, 255, 0.45)', backdropFilter: 'blur(24px) saturate(2)', WebkitBackdropFilter: 'blur(24px) saturate(2)', boxShadow: '0 4px 24px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.8)', width: '85%', maxWidth: '360px' }}>
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 px-3 py-2 rounded-full border border-white/40" style={{ background: 'rgba(255, 255, 255, 0.45)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)', width: '85%', maxWidth: '360px' }}>
         {[
-          { label: 'Inicio', path: '/feed', active: true, icon: (active) => <svg width="20" height="20" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/><path d="M9 21V12h6v9"/></svg> },
-          { label: 'Registro', path: '/home', active: false, icon: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/></svg> },
-          { label: 'Stats', path: '/stats', active: false, icon: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
-          { label: 'Perfil', path: '/profile', active: false, icon: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> },
+          { label: 'Inicio', path: '/feed', active: true, icon: (active) => <svg width="20" height="20" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/><path d="M9 21V12h6v9"/></svg> },
+          { label: 'Registro', path: '/home', active: false, icon: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 016.5 2z"/></svg> },
+          { label: 'Stats', path: '/stats', active: false, icon: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
+          { label: 'Perfil', path: '/profile', active: false, icon: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> },
         ].map(item => (
-          <button key={item.path} onClick={() => navigate(item.path)} className={`flex-1 py-2 flex flex-col items-center gap-1 rounded-full transition-all ${item.active ? 'text-orange-500' : 'text-stone-400'}`}>
+          <button key={item.path} onClick={() => navigate(item.path)} className={`flex-1 py-2 flex flex-col items-center gap-1 rounded-full ${item.active ? 'text-orange-500' : 'text-stone-400'}`}>
             {item.icon(item.active)}
-            <span className="text-[9px] font-semibold tracking-tight">{item.label}</span>
+            <span className="text-[9px] font-semibold">{item.label}</span>
           </button>
         ))}
       </div>
