@@ -45,20 +45,109 @@ function Admin() {
     if (data) setApprovedBooks(data)
   }
 
+  // FUNCIÓN AUXILIAR: Busca portadas en la API de Google Books en alta resolución
+  async function fetchGoogleBooksCover(title, author) {
+    try {
+      const queryStr = author ? `${title} ${author}` : title
+      const query = encodeURIComponent(queryStr)
+      const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${query}&maxResults=1`)
+      const data = await res.json()
+      const item = data.items?.[0]
+      if (item?.volumeInfo?.imageLinks?.thumbnail) {
+        return item.volumeInfo.imageLinks.thumbnail
+          .replace('http://', 'https://')
+          .replace('&zoom=1', '&zoom=3') // Fuerza máxima calidad de imagen disponible
+      }
+    } catch (e) { 
+      return null 
+    }
+    return null
+  }
+
+  // FUNCIÓN MOTOR DE BÚSQUEDA INTEGRAL (Combina búsquedas estrictas y genéricas)
+  async function searchCoverEngine(title, author) {
+    // 1. Intentar Open Library (Estricto: Título + Autor)
+    try {
+      const query = `${title} ${author}`
+      const res = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=1`)
+      const data = await res.json()
+      if (data.docs?.[0]?.cover_i) {
+        return `https://covers.openlibrary.org/b/id/${data.docs[0].cover_i}-L.jpg`
+      }
+    } catch (err) {
+      console.error("Fallo Open Library estricto", err)
+    }
+
+    // 2. Intentar Google Books (Estricto: Título + Autor)
+    const googleCoverStrict = await fetchGoogleBooksCover(title, author)
+    if (googleCoverStrict) return googleCoverStrict
+
+    // --- ESCANEO DE EMERGENCIA (Si el autor dificulta la coincidencia) ---
+    console.log("Búsqueda estricta fallida. Buscando carátula solo por título...");
+
+    // 3. Open Library (Solo Título)
+    try {
+      const res = await fetch(`https://openlibrary.org/search.json?title=${encodeURIComponent(title)}&limit=3`)
+      const data = await res.json()
+      const resultWithCover = data.docs?.find(d => d.cover_i)
+      if (resultWithCover?.cover_i) {
+        return `https://covers.openlibrary.org/b/id/${resultWithCover.cover_i}-L.jpg`
+      }
+    } catch (err) {
+      console.error("Fallo Open Library por título", err)
+    }
+
+    // 4. Google Books (Solo Título)
+    const googleCoverRelaxed = await fetchGoogleBooksCover(title, "")
+    if (googleCoverRelaxed) return googleCoverRelaxed
+
+    return null // No se encontró nada
+  }
+
   async function handleApprove(request) {
-    await supabase.from('books').insert({
-      user_id: request.user_id,
-      title: request.title,
-      author: request.author,
-      total_pages: request.total_pages,
-      current_page: 0,
-      genre: request.genre,
-      cover_url: request.cover_url,
-      finished: false
-    })
+    let finalCoverUrl = request.cover_url
+
+    // Si la petición no trae portada, usamos el motor integral para intentar salvarla
+    if (!finalCoverUrl) {
+      finalCoverUrl = await searchCoverEngine(request.title, request.author)
+    }
+
+    // Insertamos el libro en la base de datos
+    const { data: newBook, error: insertError } = await supabase
+      .from('books')
+      .insert({
+        user_id: request.user_id, 
+        title: request.title,
+        author: request.author,
+        total_pages: request.total_pages,
+        current_page: 0,
+        genre: request.genre,
+        cover_url: finalCoverUrl, 
+        finished: false
+      })
+      .select()
+      .single()
+
+    if (insertError) {
+      console.error("Error al insertar en books:", insertError)
+      alert("Hubo un error al aprobar el libro.")
+      return
+    }
+
+    if (newBook) {
+      await supabase.from('reading_sessions').insert({
+        user_id: request.user_id,
+        book_id: newBook.id,
+        pages_read: 0,
+        minutes_read: 0
+      })
+    }
+
     await supabase.from('book_requests').update({ status: 'approved' }).eq('id', request.id)
+    
     setRequests(r => r.filter(x => x.id !== request.id))
-    fetchBooks() // Recarga la lista para que aparezca el nuevo libro aprobado
+    fetchRequests()
+    fetchBooks() 
   }
 
   async function handleReject(id) {
@@ -70,7 +159,6 @@ function Admin() {
     if (!confirm('¿Seguro que quieres eliminar este libro de la base de datos?')) return
     await supabase.from('reading_sessions').delete().eq('book_id', bookId)
     await supabase.from('books').delete().eq('id', bookId)
-    // Corrección: Filtrar del estado para que desaparezca visualmente de inmediato
     setApprovedBooks(books => books.filter(b => b.id !== bookId))
   }
 
@@ -89,16 +177,14 @@ function Admin() {
     setEditingBook(null)
   }
 
+  // BUSCADOR EN EL MODAL DE EDICIÓN
   async function handleSearchCover(book) {
-    const query = `${book.title} ${book.author}`
-    const res = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=1`)
-    const data = await res.json()
-    const result = data.docs?.[0]
-    if (result?.cover_i) {
-      const coverUrl = `https://covers.openlibrary.org/b/id/${result.cover_i}-M.jpg`
-      setEditingBook(prev => ({ ...prev, cover_url: coverUrl }))
+    const foundCover = await searchCoverEngine(book.title, book.author)
+    
+    if (foundCover) {
+      setEditingBook(prev => ({ ...prev, cover_url: foundCover }))
     } else {
-      alert('No se encontró portada automáticamente. Puedes añadir la URL manualmente.')
+      alert('No se encontró portada en ninguna plataforma (ni por autor ni por título). Deberás añadir la URL manualmente.')
     }
   }
 
@@ -106,7 +192,6 @@ function Admin() {
 
   return (
     <div className="min-h-screen bg-stone-950 text-white">
-
       <div className="flex items-center gap-4 px-6 py-4 border-b border-stone-800">
         <button onClick={() => navigate('/home')} className="text-stone-400 hover:text-white transition-colors">
           ← Volver

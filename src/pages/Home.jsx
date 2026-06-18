@@ -58,9 +58,26 @@ function Home() {
   }
 
   async function handleDeleteBook(bookId) {
-    const { error } = await supabase.from('books').delete().eq('id', bookId)
-    if (!error) {
-      setUnstartedBooks(prev => prev.filter(b => b.id !== bookId))
+    try {
+      // 1. Eliminamos primero las sesiones asociadas a este libro para que Supabase no dé error de clave foránea
+      await supabase
+        .from('reading_sessions')
+        .delete()
+        .eq('book_id', bookId)
+
+      // 2. Ahora eliminamos el libro con total seguridad
+      const { error } = await supabase
+        .from('books')
+        .delete()
+        .eq('id', bookId)
+
+      if (!error) {
+        setUnstartedBooks(prev => prev.filter(b => b.id !== bookId))
+      } else {
+        console.error("Error de Supabase al borrar el libro:", error.message)
+      }
+    } catch (err) {
+      console.error("Error en el proceso de borrado:", err)
     }
   }
 

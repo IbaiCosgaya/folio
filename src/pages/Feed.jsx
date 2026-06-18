@@ -3,15 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 
 const GENRE_STYLES = {
-  fantasia:       { color: 'bg-purple-100 text-purple-500', icon: '🔮', spine: '#7c3aed' },
-  ciencia_ficcion:{ color: 'bg-blue-100 text-blue-500',    icon: '🚀', spine: '#2563eb' },
-  thriller:       { color: 'bg-red-100 text-red-500',      icon: '🔪', spine: '#dc2626' },
-  romance:        { color: 'bg-pink-100 text-pink-500',     icon: '💕', spine: '#db2777' },
-  historica:      { color: 'bg-amber-100 text-amber-600',  icon: '⚔️', spine: '#d97706' },
-  terror:         { color: 'bg-orange-100 text-orange-500',icon: 'ghost', spine: '#ea580c' },
-  no_ficcion:     { color: 'bg-teal-100 text-teal-500',    icon: '📚', spine: '#0d9488' },
-  autobiografia:  { color: 'bg-green-100 text-green-500',  icon: '✍️', spine: '#16a34a' },
-  otro:           { color: 'bg-stone-100 text-stone-500',  icon: '📖', spine: '#57534e' },
+  fantasia:       { color: 'bg-purple-100 text-purple-500', icon: '🔮', spine: '#7c3aed', progressClass: 'bg-purple-500' },
+  ciencia_ficcion:{ color: 'bg-blue-100 text-blue-500',    icon: '🚀', spine: '#2563eb', progressClass: 'bg-blue-500' },
+  thriller:       { color: 'bg-red-100 text-red-500',      icon: '🔪', spine: '#dc2626', progressClass: 'bg-red-500' },
+  romance:        { color: 'bg-pink-100 text-pink-500',     icon: '💕', spine: '#db2777', progressClass: 'bg-pink-500' },
+  historica:      { color: 'bg-amber-100 text-amber-600',  icon: '⚔️', spine: '#d97706', progressClass: 'bg-amber-500' },
+  terror:         { color: 'bg-orange-100 text-orange-500',icon: 'ghost', spine: '#ea580c', progressClass: 'bg-orange-500' },
+  no_ficcion:     { color: 'bg-teal-100 text-teal-500',    icon: '📚', spine: '#0d9488', progressClass: 'bg-teal-500' },
+  autobiografia:  { color: 'bg-green-100 text-green-500',  icon: '✍️', spine: '#16a34a', progressClass: 'bg-green-500' },
+  otro:           { color: 'bg-stone-100 text-stone-500',  icon: '📖', spine: '#57534e', progressClass: 'bg-stone-500' },
 }
 
 function Feed() {
@@ -60,22 +60,28 @@ function Feed() {
         .from('reading_sessions')
         .select('*, books(title, author, cover_url, genre, year, total_pages, current_page, finished, rating)')
         .in('user_id', allIds)
+        .gt('books.current_page', 0) // Modificación: Filtramos para traer solo libros con páginas leídas
         .order('created_at', { ascending: false })
         .limit(25)
 
-      if (sessionData) {
-        const uniqueUserIds = [...new Set(sessionData.map(s => s.user_id))]
+      // Limpiamos los registros padre que no contienen un libro (es decir, que tenían current_page: 0)
+      const cleanSessionData = sessionData?.filter(s => s.books !== null) || []
+
+      if (cleanSessionData.length > 0) {
+        const uniqueUserIds = [...new Set(cleanSessionData.map(s => s.user_id))]
         const { data: profilesData } = await supabase
           .from('profiles').select('id, username').in('id', uniqueUserIds)
         const profilesMap = {}
         profilesData?.forEach(p => { profilesMap[p.id] = p })
         
-        setSessions(sessionData.map(s => ({ ...s, profiles: profilesMap[s.user_id] || null })))
+        setSessions(cleanSessionData.map(s => ({ ...s, profiles: profilesMap[s.user_id] || null })))
         
-        const sessionIds = sessionData.map(s => s.id)
+        const sessionIds = cleanSessionData.map(s => s.id)
         if (sessionIds.length > 0) {
           await fetchLikes(sessionIds, user?.id)
         }
+      } else {
+        setSessions([])
       }
     } catch (err) {
       console.error(err)
@@ -325,15 +331,33 @@ function Feed() {
         <p className="text-stone-400 text-[13px] mt-0.5 italic">Manten pulsada la portada para inspeccionar</p>
       </div>
 
-      {/* Buscador */}
-      <div className="px-5 mb-6 relative z-30">
-        <input
-          type="text"
-          placeholder="Buscar lectores..."
-          value={searchQuery}
-          onChange={e => handleSearch(e.target.value)}
-          className="w-full bg-white/80 text-stone-800 placeholder-stone-400 rounded-2xl px-4 py-3 text-sm outline-none border border-stone-200/60"
-        />
+      {/* Buscador de Lectores con Desplegable de Resultados */}
+      <div className="px-5 mb-6 relative z-30 max-w-md mx-auto">
+        <div className="relative">
+          <input
+            type="text"
+            placeholder={searching ? "Buscando lectores..." : "Buscar lectores..."}
+            value={searchQuery}
+            onChange={e => handleSearch(e.target.value)}
+            className="w-full bg-white/80 text-stone-800 placeholder-stone-400 rounded-2xl px-4 py-3 text-sm outline-none border border-stone-200/60 shadow-sm"
+          />
+          {searchResults.length > 0 && (
+            <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl overflow-hidden z-50 shadow-xl border border-stone-100">
+              {searchResults.map(profile => (
+                <div
+                  key={profile.id}
+                  onClick={() => { navigate(`/user/${profile.id}`); setSearchQuery(''); setSearchResults([]) }}
+                  className="flex items-center gap-3 px-4 py-3 hover:bg-stone-50 cursor-pointer border-b border-stone-100 last:border-0 transition-colors"
+                >
+                  <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-xs font-bold text-orange-600">
+                    {profile.username?.[0]?.toUpperCase() || '?'}
+                  </div>
+                  <p className="text-sm font-semibold text-stone-800">{profile.username}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Feed principal */}
@@ -360,13 +384,22 @@ function Feed() {
                     <div className={`absolute inset-0 ${currentGenre.color} opacity-40`} />
                   )}
 
-                  <div className="absolute top-6 left-6 z-30 flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-sm font-bold text-white border border-white/30">
-                      {session.profiles?.username?.[0]?.toUpperCase() || '?'}
+                  {/* Header de la tarjeta con datos del usuario e info a la derecha */}
+                  <div className="absolute top-6 left-6 right-6 z-30 flex items-center justify-between">
+                    <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate(`/user/${session.user_id}`)}>
+                      <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-sm font-bold text-white border border-white/30">
+                        {session.profiles?.username?.[0]?.toUpperCase() || '?'}
+                      </div>
+                      <div>
+                        <p className="text-[15px] font-bold text-white leading-tight drop-shadow-md hover:underline">{session.profiles?.username || 'Usuario'}</p>
+                        <p className="text-white/75 text-[11px] font-medium mt-0.5">{timeAgo(session.created_at)}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[15px] font-bold text-white leading-tight drop-shadow-md">{session.profiles?.username || 'Usuario'}</p>
-                      <p className="text-white/75 text-[11px] font-medium mt-0.5">{timeAgo(session.created_at)}</p>
+                    {/* Fecha de publicación a la derecha */}
+                    <div className="text-right">
+                      <p className="text-white/90 text-xs font-semibold drop-shadow-md">
+                        {new Date(session.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                      </p>
                     </div>
                   </div>
 
@@ -374,11 +407,11 @@ function Feed() {
                   <div className="relative z-10 w-full h-full max-h-[42vh] px-10 py-4 flex items-center justify-center">
                     <div 
                       className="book-flat-container"
-                      onTouchStart={() => handleTouchStart(session)}
-                      onTouchEnd={handleTouchEnd}
                       onMouseDown={() => handleTouchStart(session)}
                       onMouseUp={handleTouchEnd}
                       onMouseLeave={handleTouchEnd}
+                      onTouchStart={() => handleTouchStart(session)}
+                      onTouchEnd={handleTouchEnd}
                     >
                       {session.books?.cover_url ? (
                         <img src={session.books.cover_url} alt={session.books.title} className="book-flat-cover" loading="lazy" />
@@ -396,7 +429,7 @@ function Feed() {
 
                 {/* Bloque Completo de Información en Tarjeta */}
                 <div className="px-6 pb-7 bg-white relative z-30">
-                  <span className="text-[10px] font-bold tracking-widest uppercase bg-stone-100 text-stone-500 px-2.5 py-1 rounded-md">
+                  <span className={`text-[10px] font-bold tracking-widest uppercase px-2.5 py-1 rounded-md ${currentGenre.color}`}>
                     {(session.books?.genre || 'otro').replace('_', ' ')}
                   </span>
 
@@ -406,7 +439,7 @@ function Feed() {
                     {session.books?.year && <span className="text-stone-300 font-normal"> · {session.books.year}</span>}
                   </p>
 
-                  {/* Progreso de la sesión */}
+                  {/* Progress bar dinámico basado en género */}
                   {session.books?.finished ? (
                     <div className="mt-4 bg-gradient-to-r from-amber-50 to-orange-50 border border-orange-100 rounded-2xl px-4 py-3 text-center">
                       <p className="text-sm font-black text-stone-900">🎉 ¡Libro Completado!</p>
@@ -420,10 +453,7 @@ function Feed() {
                         </div>
                         <div className="w-full bg-stone-100 rounded-full h-1.5 overflow-hidden">
                           <div 
-                            className={`h-full transition-all duration-500 ${
-                              session.books?.genre === 'fantasia' ? 'bg-purple-500' :
-                              session.books?.genre === 'historica' ? 'bg-amber-500' : 'bg-orange-500'
-                            }`}
+                            className={`h-full transition-all duration-500 ${currentGenre.progressClass}`}
                             style={{ width: `${(session.books.current_page / session.books.total_pages) * 100}%` }}
                           />
                         </div>
@@ -454,13 +484,13 @@ function Feed() {
         )}
       </div>
 
-      {/* --- MODO DETALLE EN OSCURO: CON CONTENIDO EXPANDIBLE DE RECOMENDACIÓN --- */}
+      {/* --- MODO DETALLE EN OSCURO --- */}
       {selectedSession && (
         <div 
           className={`fixed inset-0 z-50 flex flex-col justify-end bg-stone-950/85 transition-all ${isClosing ? 'anim-bg-out' : 'anim-bg-in'}`}
           style={{ backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}
         >
-          {/* Libro flotante en la mitad superior */}
+          {/* Libro flotante superior */}
           <div className="flex-1 flex flex-col items-center justify-center px-6 relative">
             <button 
               onClick={closeDetails} 
@@ -482,17 +512,17 @@ function Feed() {
             </div>
           </div>
 
-          {/* PANEL INFERIOR INTEGRADO: Limitado al tamaño simétrico de tus tarjetas de feed (max-w-md mx-auto) */}
+          {/* PANEL INFERIOR ADAPTADO */}
           <div 
             className={`w-full max-w-md mx-auto bg-white rounded-t-[2.5rem] md:rounded-b-[2.5rem] md:mb-6 shadow-2xl flex flex-col overflow-hidden ${
               isClosing ? 'anim-panel-out' : 'anim-panel-in'
             }`}
             style={{ maxHeight: '62vh', minHeight: '55vh' }}
           >
-            {/* Cabecera fija interna */}
+            {/* Cabecera interna fija */}
             <div className="px-6 pt-6 pb-3 border-b border-stone-100 flex items-center justify-between flex-shrink-0">
               <div>
-                <span className="text-[9px] font-black tracking-widest uppercase bg-orange-100 text-orange-600 px-2 py-0.5 rounded">
+                <span className={`text-[9px] font-black tracking-widest uppercase px-2 py-0.5 rounded ${GENRE_STYLES[selectedSession.books?.genre]?.color || GENRE_STYLES.otro.color}`}>
                   {selectedSession.books?.genre || 'General'}
                 </span>
                 <h2 className="text-xl font-black text-stone-900 tracking-tight mt-1 truncate max-w-[220px]">
@@ -504,21 +534,9 @@ function Feed() {
               </button>
             </div>
 
-            {/* Contenedor scrolleable interno */}
+            {/* Contenedor scrolleable interno sin bloques estadísticos repetidos */}
             <div className="overflow-y-auto flex-1 p-6 space-y-6 text-stone-800 scrollbar-none">
               
-              {/* Bloque Estadístico */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-stone-50 p-3.5 rounded-2xl border border-stone-100">
-                  <p className="text-[10px] uppercase text-stone-400 font-bold tracking-wide">PÁGINAS LEÍDAS</p>
-                  <p className="text-lg font-black text-stone-800 mt-0.5">+{selectedSession.pages_read} <span className="text-xs text-stone-400 font-normal">pags</span></p>
-                </div>
-                <div className="bg-stone-50 p-3.5 rounded-2xl border border-stone-100">
-                  <p className="text-[10px] uppercase text-stone-400 font-bold tracking-wide">TIEMPO DEDICADO</p>
-                  <p className="text-lg font-black text-stone-800 mt-0.5">{selectedSession.minutes_read || '--'} <span className="text-xs text-stone-400 font-normal">min</span></p>
-                </div>
-              </div>
-
               {/* Sección 1: Sinopsis */}
               <div>
                 <h4 className="text-xs font-bold uppercase text-stone-400 tracking-wider mb-2">Sinopsis</h4>
@@ -550,7 +568,7 @@ function Feed() {
                 <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none">
                   {[1, 2, 3].map(i => (
                     <div key={i} className="min-w-[105px] w-[105px] bg-stone-50 p-2 rounded-xl border border-stone-100 text-center">
-                      <div className="w-full h-28 bg-stone-200 rounded-md mb-1.5 flex items-center justify-center text-stone-400 text-xs">🔮</div>
+                      <div className="w-full h-28 bg-stone-200 rounded-md mb-1.5 flex items-center justify-center text-stone-400 text-xs">{GENRE_STYLES[selectedSession.books?.genre]?.icon || '📖'}</div>
                       <p className="text-[10px] font-bold text-stone-700 truncate">Ejemplar {i}</p>
                     </div>
                   ))}
