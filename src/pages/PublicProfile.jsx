@@ -14,6 +14,19 @@ const GENRE_STYLES = {
   otro:           { color: 'bg-stone-500',   icon: '📖' },
 }
 
+function flattenUserBook(ub) {
+  return {
+    id: ub.id,
+    current_page: ub.current_page,
+    finished: ub.finished,
+    title: ub.global_books?.title,
+    author: ub.global_books?.author,
+    genre: ub.global_books?.genre,
+    cover_url: ub.global_books?.cover_url,
+    total_pages: ub.global_books?.total_pages,
+  }
+}
+
 function PublicProfile() {
   const [profile, setProfile] = useState(null)
   const [books, setBooks] = useState([])
@@ -26,7 +39,7 @@ function PublicProfile() {
 
   useEffect(() => {
     fetchAll()
-  }, [])
+  }, [id])
 
   async function fetchAll() {
     const { data: { user } } = await supabase.auth.getUser()
@@ -45,21 +58,23 @@ function PublicProfile() {
     if (profileData) setProfile(profileData)
 
     const { data: booksData } = await supabase
-      .from('books')
-      .select('*')
+      .from('user_books')
+      .select('*, global_books(title, author, genre, cover_url, total_pages)')
       .eq('user_id', id)
+      .eq('is_active', true)
       .eq('finished', false)
-    if (booksData) setBooks(booksData)
+    if (booksData) setBooks(booksData.map(flattenUserBook))
 
     const { data: finishedData } = await supabase
-      .from('books')
-      .select('*')
+      .from('user_books')
+      .select('id')
       .eq('user_id', id)
+      .eq('is_active', true)
       .eq('finished', true)
 
     const { data: sessionsData } = await supabase
       .from('reading_sessions')
-      .select('*')
+      .select('pages_read')
       .eq('user_id', id)
 
     if (sessionsData && finishedData) {

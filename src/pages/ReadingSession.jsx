@@ -9,16 +9,27 @@ function ReadingSession() {
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
-  const { id } = useParams()
+  const { id } = useParams() // id de user_books
 
   useEffect(() => {
     fetchBook()
   }, [])
 
   async function fetchBook() {
-    const { data } = await supabase.from('books').select('*').eq('id', id).single()
+    const { data } = await supabase
+      .from('user_books')
+      .select('*, global_books(title, author, total_pages)')
+      .eq('id', id)
+      .single()
+
     if (data) {
-      setBook(data)
+      setBook({
+        id: data.id,
+        current_page: data.current_page,
+        title: data.global_books?.title,
+        author: data.global_books?.author,
+        total_pages: data.global_books?.total_pages,
+      })
       setCurrentPage(data.current_page)
     }
   }
@@ -31,7 +42,7 @@ function ReadingSession() {
     const pagesRead = parseInt(currentPage) - book.current_page
     const finished = parseInt(currentPage) >= book.total_pages
 
-    await supabase.from('books').update({
+    await supabase.from('user_books').update({
       current_page: parseInt(currentPage),
       finished: finished
     }).eq('id', id)
@@ -39,12 +50,12 @@ function ReadingSession() {
     if (finished) {
       navigate(`/notes/${id}`)
       return
-    }   
+    }
 
     if (pagesRead > 0) {
       await supabase.from('reading_sessions').insert({
         user_id: user.id,
-        book_id: parseInt(id), // Pasamos id directamente (si tu DB usa enteros, usa parseInt(id))
+        book_id: parseInt(id), // user_books.id
         pages_read: pagesRead,
         minutes_read: minutes ? parseInt(minutes) : null,
         date: new Date().toISOString().split('T')[0],
@@ -108,7 +119,6 @@ function ReadingSession() {
           className="w-full bg-stone-900 text-white placeholder-stone-500 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-amber-500 mb-4"
         />
 
-        {/* Nuevo campo de nota añadido */}
         <p className="text-stone-400 text-sm mb-2">Nota de hoy (opcional)</p>
         <textarea
           placeholder="¿Qué te ha parecido lo que has leído hoy?"

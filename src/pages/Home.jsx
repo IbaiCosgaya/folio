@@ -14,6 +14,25 @@ const GENRE_STYLES = {
   otro:           { color: 'bg-stone-100 text-stone-500',  icon: '📖' },
 }
 
+// Convierte una fila de user_books (con global_books anidado) en el shape
+// plano que ya usaba el resto del componente, para no tocar el JSX.
+function flattenUserBook(ub) {
+  return {
+    id: ub.id, // id de user_books — lo siguen usando reading_sessions/book_notes
+    book_id: ub.book_id,
+    current_page: ub.current_page,
+    finished: ub.finished,
+    rating: ub.rating,
+    is_active: ub.is_active,
+    title: ub.global_books?.title,
+    author: ub.global_books?.author,
+    genre: ub.global_books?.genre,
+    cover_url: ub.global_books?.cover_url,
+    total_pages: ub.global_books?.total_pages,
+    year: ub.global_books?.year,
+  }
+}
+
 function Home() {
   const [books, setBooks] = useState([])
   const [unstartedBooks, setUnstartedBooks] = useState([])
@@ -22,7 +41,10 @@ function Home() {
   const [myProfile, setMyProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [editingRating, setEditingRating] = useState(null)
+  const [pendingCount, setPendingCount] = useState(0)
   const navigate = useNavigate()
+
+  const ADMIN_ID = '581dd0d6-6240-461a-90b7-224f74d577ab'
 
   useEffect(() => {
     fetchBooks()
@@ -38,46 +60,43 @@ function Home() {
       if (myProfileData) setMyProfile(myProfileData)
 
       const { data } = await supabase
-        .from('books')
-        .select('*')
+        .from('user_books')
+        .select('*, global_books(title, author, genre, cover_url, total_pages, year)')
         .eq('user_id', user.id)
+        .eq('is_active', true)
 
       if (data) {
-        setBooks(data.filter(b => !b.finished && b.current_page > 0))
-        setUnstartedBooks(data.filter(b => !b.finished && b.current_page === 0))
-        setFinishedBooks(data.filter(b => b.finished))
+        const flat = data.map(flattenUserBook)
+        setBooks(flat.filter(b => !b.finished && b.current_page > 0))
+        setUnstartedBooks(flat.filter(b => !b.finished && b.current_page === 0))
+        setFinishedBooks(flat.filter(b => b.finished))
+      }
+
+      if (user.id === ADMIN_ID) {
+        const { count } = await supabase
+          .from('book_requests')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'pending')
+        setPendingCount(count || 0)
       }
     }
     setLoading(false)
   }
 
-  async function handleRating(bookId, rating) {
-    await supabase.from('books').update({ rating }).eq('id', bookId)
-    setFinishedBooks(prevFinished => prevFinished.map(b => b.id === bookId ? { ...b, rating } : b))
+  async function handleRating(userBookId, rating) {
+    await supabase.from('user_books').update({ rating }).eq('id', userBookId)
+    setFinishedBooks(prevFinished => prevFinished.map(b => b.id === userBookId ? { ...b, rating } : b))
     setEditingRating(null)
   }
 
-  async function handleDeleteBook(bookId) {
-    try {
-      // 1. Eliminamos primero las sesiones asociadas a este libro para que Supabase no dé error de clave foránea
-      await supabase
-        .from('reading_sessions')
-        .delete()
-        .eq('book_id', bookId)
-
-      // 2. Ahora eliminamos el libro con total seguridad
-      const { error } = await supabase
-        .from('books')
-        .delete()
-        .eq('id', bookId)
-
-      if (!error) {
-        setUnstartedBooks(prev => prev.filter(b => b.id !== bookId))
-      } else {
-        console.error("Error de Supabase al borrar el libro:", error.message)
-      }
-    } catch (err) {
-      console.error("Error en el proceso de borrado:", err)
+  // Borrado lógico: el libro sigue existiendo en global_books para otros usuarios
+  async function handleDeleteBook(userBookId) {
+    const { error } = await supabase
+      .from('user_books')
+      .update({ is_active: false })
+      .eq('id', userBookId)
+    if (!error) {
+      setUnstartedBooks(prev => prev.filter(b => b.id !== userBookId))
     }
   }
 
@@ -130,8 +149,13 @@ function Home() {
         </div>
         <div className="flex items-center gap-3">
           {user?.id === '581dd0d6-6240-461a-90b7-224f74d577ab' && (
-            <button onClick={() => navigate('/admin')} className="text-[11px] text-stone-400 tracking-widest uppercase font-semibold">
+            <button onClick={() => navigate('/admin')} className="relative text-[11px] text-stone-400 tracking-widest uppercase font-semibold">
               admin
+              {pendingCount > 0 && (
+                <span className="absolute -top-2 -right-3 bg-red-500 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                  {pendingCount}
+                </span>
+              )}
             </button>
           )}
           <button
@@ -166,17 +190,22 @@ function Home() {
           <span>Añadir otro libro</span>
         </button>
 
-        {/* 2. SECCIÓN: MI LISTA (Con título SVG) */}
-        {unstartedBooks.length > 0 && (
-          <div className="mb-8">
-            <div className="flex items-center gap-2 text-stone-500 mb-3.5 px-1">
-              <span className="text-xs font-black tracking-wider uppercase">Mi lista</span>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-              </svg>
+        {/* 2. SECCIÓN: MI LISTA (Con título SVG) — siempre visible */}
+        <div className="mb-8">
+          <div className="flex items-center gap-2 text-stone-500 mb-3.5 px-1">
+            <span className="text-xs font-black tracking-wider uppercase">Mi lista</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+            </svg>
+          </div>
+
+          {unstartedBooks.length === 0 ? (
+            <div className="bg-white rounded-2xl p-6 text-center border border-stone-100 shadow-sm">
+              <p className="text-stone-400 text-sm font-medium">Lista vacía</p>
+              <p className="text-stone-300 text-xs mt-1">Añade libros para empezar su lectura.</p>
             </div>
-            
+          ) : (
             <div className="space-y-3">
               {unstartedBooks.map(book => (
                 <div key={book.id} className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm flex items-center gap-3.5">
@@ -187,7 +216,7 @@ function Home() {
                       <span className="text-xl">{GENRE_STYLES[book.genre]?.icon || '📖'}</span>
                     </div>
                   )}
-                  
+
                   <div className="flex-1 min-w-0">
                     <p className="font-black text-stone-900 text-[14px] truncate leading-tight">{book.title}</p>
                     <p className="text-stone-400 text-xs font-medium truncate mt-0.5">{book.author}</p>
@@ -215,8 +244,8 @@ function Home() {
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* 3. LISTADO DE LIBROS ACTIVOS */}
         {books.length > 0 && (
@@ -256,7 +285,7 @@ function Home() {
                     {book.year && <p className="text-stone-300 text-[11px] mt-1 font-medium">{book.year}</p>}
                   </div>
                 </div>
-                
+
                 {/* Barra de Progreso adaptada de Feed */}
                 <div className="w-full bg-stone-100 rounded-full h-2 relative flex items-center mt-2 mb-1">
                   <div
@@ -283,7 +312,7 @@ function Home() {
                     {GENRE_STYLES[book.genre]?.icon || '📖'}
                   </span>
                 </div>
-                
+
                 <div className="flex justify-between items-center mt-2.5">
                   <p className="text-stone-400 text-[11px] font-semibold">
                     Página <span className="text-stone-700 font-bold">{book.current_page}</span> de <span className="text-stone-700">{book.total_pages}</span>
@@ -309,13 +338,7 @@ function Home() {
           </div>
         )}
 
-        {/* Fallback si el usuario no tiene ningún libro metido en la base de datos */}
-        {books.length === 0 && unstartedBooks.length === 0 && (
-          <div className="bg-white rounded-3xl p-10 text-center border border-stone-100 shadow-sm mb-8">
-            <p className="text-stone-400 text-sm font-medium">Tu estantería personal está vacía</p>
-            <p className="text-stone-300 text-xs mt-1">Pulsa en añadir otro libro para empezar.</p>
-          </div>
-        )}
+        {/* Nota: el estado "vacío" ahora vive dentro de la sección Mi Lista de arriba */}
 
         {/* 4. LISTADO DE LIBROS TERMINADOS (Al final del todo) */}
         {finishedBooks.length > 0 && (
@@ -323,7 +346,7 @@ function Home() {
             <div className="flex items-center gap-2 text-stone-400 mb-3.5 px-1">
               <span className="text-xs font-black tracking-wider uppercase">Libros terminados ✅</span>
             </div>
-            
+
             <div className="space-y-3">
               {finishedBooks.map(book => (
                 <div key={book.id} className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm flex items-center gap-4">
@@ -346,7 +369,7 @@ function Home() {
                   <div className="flex-1 min-w-0">
                     <h3 className="font-bold text-stone-900 text-[14px] truncate leading-tight">{book.title}</h3>
                     <p className="text-stone-400 text-xs font-medium truncate mt-0.5 mb-2">{book.author}</p>
-                    
+
                     <div className="flex items-center gap-3">
                       <div className="flex gap-0.5">
                         {[1, 2, 3, 4, 5].map(star => (
@@ -365,7 +388,7 @@ function Home() {
                           </button>
                         ))}
                       </div>
-                      
+
                       {book.rating && editingRating !== book.id && (
                         <div className="flex items-center gap-2">
                           <button
@@ -383,7 +406,7 @@ function Home() {
                           </button>
                         </div>
                       )}
-                      
+
                       {editingRating === book.id && (
                         <button
                           onClick={() => setEditingRating(null)}

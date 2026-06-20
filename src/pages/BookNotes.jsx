@@ -9,7 +9,7 @@ function BookNotes() {
   const [savingFinal, setSavingFinal] = useState(false)
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
-  const { id } = useParams()
+  const { id } = useParams() // id de user_books
 
   useEffect(() => {
     fetchData()
@@ -17,19 +17,25 @@ function BookNotes() {
 
   async function fetchData() {
     const { data: bookData } = await supabase
-      .from('books')
-      .select('*')
+      .from('user_books')
+      .select('*, global_books(title)')
       .eq('id', id)
       .single()
+
     if (bookData) {
-      setBook(bookData)
+      setBook({
+        id: bookData.id,
+        finished: bookData.finished,
+        final_note: bookData.final_note,
+        title: bookData.global_books?.title,
+      })
       setFinalNote(bookData.final_note || '')
     }
 
     const { data: sessionData } = await supabase
       .from('reading_sessions')
       .select('*')
-      .eq('book_id', id)
+      .eq('book_id', id) // id de user_books
       .not('note', 'is', null)
       .order('date', { ascending: true })
     if (sessionData) setSessions(sessionData)
@@ -37,10 +43,10 @@ function BookNotes() {
   }
 
   async function handleSaveFinalNote() {
-  setSavingFinal(true)
-  await supabase.from('books').update({ final_note: finalNote }).eq('id', id)
-  setSavingFinal(false)
-  navigate('/home')
+    setSavingFinal(true)
+    await supabase.from('user_books').update({ final_note: finalNote }).eq('id', id)
+    setSavingFinal(false)
+    navigate('/home')
   }
 
   if (loading) return <div className="min-h-screen bg-stone-950 flex items-center justify-center text-white">Cargando...</div>

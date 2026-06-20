@@ -31,96 +31,161 @@ function AddBook() {
   // Debounce para búsqueda automática mientras el usuario escribe
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (query.length > 2) {
-        executeSearch()
-      }
+      if (query.length > 2) executeSearch()
     }, 500)
     return () => clearTimeout(timer)
   }, [query])
 
-  async function fetchGoogleBooksCover(title, author) {
-    try {
-      const queryStr = encodeURIComponent(`${title} ${author}`)
-      const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${queryStr}&maxResults=1`)
-      const data = await res.json()
-      const item = data.items?.[0]
-      if (item?.volumeInfo?.imageLinks?.thumbnail) {
-        return item.volumeInfo.imageLinks.thumbnail
-          .replace('http://', 'https://')
-          .replace('&zoom=1', '&zoom=3')
+  // --- Evita duplicados: si el usuario ya tiene este book_id en su estantería,
+  // reutiliza/reactiva esa fila en vez de crear una nueva ---
+  async function addBookToLibrary(userId, bookId) {
+    const { data: existing } = await supabase
+      .from('user_books')
+      .select('id, is_active')
+      .eq('user_id', userId)
+      .eq('book_id', bookId)
+      .maybeSingle()
+
+    if (existing) {
+      if (existing.is_active) {
+        return { error: 'duplicate' }
       }
-    } catch (e) { return null }
-    return null
+      // Estaba desactivado (lo habías quitado de tu lista) → lo reactivamos
+      const { error } = await supabase
+        .from('user_books')
+        .update({ is_active: true, current_page: 0, finished: false })
+        .eq('id', existing.id)
+      return { error: error ? error.message : null }
+    }
+
+    const { error } = await supabase.from('user_books').insert({
+      user_id: userId,
+      book_id: bookId,
+      current_page: 0,
+      finished: false,
+      is_active: true,
+    })
+    return { error: error ? error.message : null }
   }
 
-  // Centralizamos la lógica de búsqueda híbrida (Supabase + Open Library)
+  // --- Búsqueda en Google Books, con fallback a OpenLibrary si falta portada ---
+  async function fetchOpenLibraryCover(title, author) {
+    try {
+      const res = await fetch(
+        `https://openlibrary.org/search.json?q=${encodeURIComponent(`${title} ${author || ''}`)}&limit=1`
+      )
+      const data = await res.json()
+      const coverId = data.docs?.[0]?.cover_i
+      return coverId ? `https://covers.openlibrary.org/b/id/${coverId}-L.jpg` : null
+    } catch (e) {
+      return null
+    }
+  }
+
+  async function searchGoogleBooks(q) {
+    try {
+      const res = await fetch(
+        `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=6`
+      )
+      const data = await res.json()
+      if (!data.items) return []
+      return Promise.all(data.items.map(async item => {
+        const info = item.volumeInfo || {}
+        let cover = info.imageLinks?.thumbnail
+          ? info.imageLinks.thumbnail.replace('http://', 'https://').replace('zoom=1', 'zoom=2')
+          : null
+
+        // Google Books no siempre trae portada — probamos OpenLibrary como respaldo
+        if (!cover) {
+          cover = await fetchOpenLibraryCover(info.title, info.authors?.[0])
+        }
+
+        return {
+          google_books_id: item.id,
+          title: info.title,
+          author: info.authors?.[0] || 'Autor desconocido',
+          pages: info.pageCount || null,
+          cover,
+          year: info.publishedDate ? parseInt(info.publishedDate.slice(0, 4)) : null,
+          isLocal: false,
+        }
+      }))
+    } catch (e) {
+      return []
+    }
+  }
+
+  // --- Búsqueda híbrida: catálogo local primero, luego Google Books ---
   async function executeSearch() {
     if (!query.trim()) return
     setSearching(true)
 
     try {
-      // 1. Buscamos primero en nuestra base de datos local (Supabase)
       const { data: localBooks, error: dbError } = await supabase
-        .from('books')
+        .from('global_books')
         .select('*')
         .ilike('title', `%${query}%`)
-        .limit(5)
+        .limit(6)
 
-      if (dbError) console.error("Error al buscar en local:", dbError)
+      if (dbError) console.error('Error al buscar en local:', dbError)
 
-      // Si encontramos libros en nuestra BD, los formateamos con un tag distintivo [BD] u opcional
-      let dbResults = []
-      if (localBooks && localBooks.length > 0) {
-        dbResults = localBooks.map(b => ({
-          title: b.title,
-          author: b.author,
-          pages: b.total_pages,
-          cover: b.cover_url,
-          year: b.year,
-          isLocal: true // Marcador para saber que ya existe en nuestra base de datos
-        }))
-      }
-
-      // 2. Buscamos en Open Library para complementar o por si no hay en BD
-      const res = await fetch(`https://openlibrary.org/search.json?title=${encodeURIComponent(query)}&limit=5`)
-      const data = await res.json()
-      
-      const apiResults = await Promise.all((data.docs || []).map(async b => {
-        let cover = b.cover_i ? `https://covers.openlibrary.org/b/id/${b.cover_i}-L.jpg` : null
-        if (!cover) {
-          cover = await fetchGoogleBooksCover(b.title, b.author_name?.[0] || '')
-        }
-        return {
-          title: b.title,
-          author: b.author_name?.[0] || 'Autor desconocido',
-          pages: b.number_of_pages_median || null,
-          cover,
-          year: b.first_publish_year || null,
-          isLocal: false
-        }
+      const dbResults = (localBooks || []).map(b => ({
+        id: b.id,
+        title: b.title,
+        author: b.author,
+        pages: b.total_pages,
+        cover: b.cover_url,
+        year: b.year,
+        genre: b.genre,
+        isLocal: true,
       }))
 
-      // Unimos los resultados priorizando los de la base de datos local para evitar duplicados exactos
-      const combinedResults = [...dbResults, ...apiResults].filter(
-        (book, index, self) => 
-          index === self.findIndex((t) => t.title.toLowerCase() === book.title.toLowerCase() && t.author.toLowerCase() === book.author.toLowerCase())
+      const apiResults = await searchGoogleBooks(query)
+
+      // Evitamos mostrar duplicados visuales: si Google Books trae algo que
+      // ya tenemos en el catálogo (mismo título+autor), nos quedamos con la
+      // versión local (marcada "Ya en Folio") y descartamos la de la API.
+      const norm = s => (s || '').trim().toLowerCase()
+      const localKeys = new Set(dbResults.map(b => `${norm(b.title)}|${norm(b.author)}`))
+      const filteredApiResults = apiResults.filter(
+        b => !localKeys.has(`${norm(b.title)}|${norm(b.author)}`)
       )
 
-      setResults(combinedResults.slice(0, 5))
+      setResults([...dbResults, ...filteredApiResults].slice(0, 8))
     } catch (error) {
-      console.error("Error global en búsqueda:", error)
+      console.error('Error global en búsqueda:', error)
     } finally {
       setSearching(false)
     }
   }
 
-  function handleSelect(book) {
+  async function handleSelect(book) {
+    // Si el libro ya está en nuestro catálogo (verificado o aprobado), se añade
+    // directamente a la estantería: no tiene sentido volver a pedir sus datos.
+    if (book.isLocal) {
+      setLoading(true)
+      const { data: { user } } = await supabase.auth.getUser()
+      const { error } = await addBookToLibrary(user.id, book.id)
+      setLoading(false)
+      setResults([])
+      setQuery('')
+      if (!error) {
+        navigate('/home')
+      } else if (error === 'duplicate') {
+        alert('Ya tienes este libro en tu lista.')
+      } else {
+        alert('Hubo un error al añadir el libro.')
+      }
+      return
+    }
+
+    // Libro de Google Books o candidato a manual: sí necesita pasar por el formulario
     setSelected(book)
     setTitle(book.title)
     setAuthor(book.author)
     setTotalPages(book.pages || '')
     setYear(book.year || '')
-    setGenre(book.genre || '') // Si viene de BD local ya tiene género asignado
+    setGenre(book.genre || '')
     setResults([])
     setQuery('')
   }
@@ -132,57 +197,81 @@ function AddBook() {
     setQuery('')
   }
 
+  function resetForm() {
+    setSelected(null)
+    setManual(false)
+    setTitle('')
+    setAuthor('')
+    setTotalPages('')
+    setGenre('')
+    setYear('')
+  }
+
   async function handleAddBook() {
     if (!title || !author || !totalPages || !genre) return
     setLoading(true)
 
     const { data: { user } } = await supabase.auth.getUser()
 
-    // Si seleccionó un libro (sea de la API externa o ya registrado en local)
-    if (selected) {
-      const { data: newBook, error } = await supabase
-        .from('books')
-        .insert({
-          user_id: user.id, // Se añade a la colección del usuario activo actual
-          title,
-          author,
-          total_pages: parseInt(totalPages),
-          current_page: 0,
-          genre,
-          cover_url: selected?.cover || null,
-          year: year ? parseInt(year) : null,
-          finished: false
-        })
-        .select()
-        .single()
+    // --- Caso 1: libro venido de Google Books, aún no está en el catálogo ---
+    if (selected && !selected.isLocal) {
+      // Por si dos usuarios lo añaden casi a la vez, comprobamos antes de insertar
+      const { data: existing } = await supabase
+        .from('global_books')
+        .select('id')
+        .eq('google_books_id', selected.google_books_id)
+        .maybeSingle()
 
-      if (!error && newBook) {
-        // Le creamos su sesión inicial en 0 para que impacte el Feed/Registro de inmediato
-        await supabase.from('reading_sessions').insert({
-          user_id: user.id,
-          book_id: newBook.id,
-          pages_read: 0,
-          minutes_read: 0
-        })
-        navigate('/home')
+      let bookId = existing?.id
+
+      if (!bookId) {
+        const { data: inserted, error } = await supabase
+          .from('global_books')
+          .insert({
+            google_books_id: selected.google_books_id,
+            title,
+            author,
+            genre,
+            cover_url: selected.cover || null,
+            total_pages: parseInt(totalPages),
+            year: year ? parseInt(year) : null,
+            is_verified: true,
+          })
+          .select('id')
+          .single()
+        if (error) { setLoading(false); return }
+        bookId = inserted.id
       }
-    } else {
-      // Si fue una creación totalmente manual va a moderación
-      const { error } = await supabase.from('book_requests').insert({
-        user_id: user.id,
-        title,
-        author,
-        total_pages: parseInt(totalPages),
-        genre,
-        cover_url: null,
-        status: 'pending'
-      })
-      if (!error) {
+
+      const { error: ubError } = await addBookToLibrary(user.id, bookId)
+      setLoading(false)
+      if (!ubError) {
         navigate('/home')
-        alert('Tu libro ha sido enviado para revisión. Lo añadiremos pronto.')
+      } else if (ubError === 'duplicate') {
+        alert('Ya tienes este libro en tu lista.')
+      } else {
+        alert('Hubo un error al añadir el libro.')
       }
+      return
     }
+
+    // --- Caso 3: añadido manualmente, no encontrado en ningún sitio ---
+    // No toca global_books directamente: va a revisión del moderador.
+    const { error } = await supabase.from('book_requests').insert({
+      user_id: user.id,
+      title,
+      author,
+      total_pages: parseInt(totalPages),
+      genre,
+      year: year ? parseInt(year) : null,
+      cover_url: null,
+      status: 'pending',
+    })
     setLoading(false)
+    if (!error) {
+      navigate('/home')
+      alert('Tu libro ha sido enviado para revisión. Lo añadiremos pronto a tu lista.')
+    }
   }
 
   return (
@@ -218,7 +307,7 @@ function AddBook() {
               <div className="space-y-2">
                 {results.map((book, i) => (
                   <div
-                    key={i}
+                    key={book.isLocal ? `local-${book.id}` : `google-${book.google_books_id || i}`}
                     onClick={() => handleSelect(book)}
                     className="flex items-center justify-between bg-stone-900 rounded-xl p-3 border border-stone-800 cursor-pointer hover:border-amber-500 transition-colors"
                   >
@@ -236,7 +325,7 @@ function AddBook() {
                     </div>
                     {book.isLocal && (
                       <span className="bg-green-500/10 text-green-400 text-[10px] font-bold px-2 py-1 rounded-md border border-green-500/20">
-                        Catálogo
+                        Ya en Folio
                       </span>
                     )}
                   </div>
@@ -319,7 +408,7 @@ function AddBook() {
 
             <div className="flex gap-2">
               <button
-                onClick={() => { setSelected(null); setManual(false); setTitle(''); setAuthor(''); setTotalPages(''); setGenre(''); setYear('') }}
+                onClick={resetForm}
                 className="flex-1 border border-stone-800 text-stone-400 font-semibold rounded-xl py-3 text-sm transition-colors hover:border-stone-600"
               >
                 ← Volver a buscar
