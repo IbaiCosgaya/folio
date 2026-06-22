@@ -1,18 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
-
-const GENRE_STYLES = {
-  fantasia:       { color: 'bg-purple-100 text-purple-500', icon: '🔮' },
-  ciencia_ficcion:{ color: 'bg-blue-100 text-blue-500',    icon: '🚀' },
-  thriller:       { color: 'bg-red-100 text-red-500',      icon: '🔪' },
-  romance:        { color: 'bg-pink-100 text-pink-500',     icon: '💕' },
-  historica:      { color: 'bg-amber-100 text-amber-600',  icon: '⚔️' },
-  terror:         { color: 'bg-orange-100 text-orange-500',icon: '👻' },
-  no_ficcion:     { color: 'bg-teal-100 text-teal-500',    icon: '📚' },
-  autobiografia:  { color: 'bg-green-100 text-green-500',  icon: '✍️' },
-  otro:           { color: 'bg-stone-100 text-stone-500',  icon: '📖' },
-}
+import { getGenreStyle } from '../constants/genres'
 
 // Convierte una fila de user_books (con global_books anidado) en el shape
 // plano que ya usaba el resto del componente, para no tocar el JSX.
@@ -212,8 +201,8 @@ function Home() {
                   {book.cover_url ? (
                     <img src={book.cover_url} alt={book.title} className="w-11 h-16 object-cover rounded-xl shadow-sm flex-shrink-0" />
                   ) : (
-                    <div className={`w-11 h-16 rounded-xl flex items-center justify-center flex-shrink-0 ${GENRE_STYLES[book.genre]?.color || 'bg-stone-50'}`}>
-                      <span className="text-xl">{GENRE_STYLES[book.genre]?.icon || '📖'}</span>
+                    <div className={`w-11 h-16 rounded-xl flex items-center justify-center flex-shrink-0 ${getGenreStyle(book.genre).badge}`}>
+                      {(() => { const Icon = getGenreStyle(book.genre).icon; return <Icon size={20} strokeWidth={1.8} /> })()}
                     </div>
                   )}
 
@@ -266,8 +255,8 @@ function Home() {
                         className="w-16 h-24 object-cover rounded-xl shadow-md"
                       />
                     ) : (
-                      <div className={`w-16 h-24 rounded-xl flex items-center justify-center text-3xl shadow-sm ${GENRE_STYLES[book.genre]?.color || 'bg-stone-50'}`}>
-                        {GENRE_STYLES[book.genre]?.icon || '📖'}
+                      <div className={`w-16 h-24 rounded-xl flex items-center justify-center shadow-sm ${getGenreStyle(book.genre).badge}`}>
+                        {(() => { const Icon = getGenreStyle(book.genre).icon; return <Icon size={26} strokeWidth={1.6} /> })()}
                       </div>
                     )}
                     <div className="absolute -bottom-1.5 -right-1.5 bg-stone-900 rounded-lg px-1.5 py-0.5 shadow-sm border border-stone-800">
@@ -277,7 +266,7 @@ function Home() {
                     </div>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider inline-block mb-1.5 ${GENRE_STYLES[book.genre]?.color || 'bg-stone-50'}`}>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider inline-block mb-1.5 ${getGenreStyle(book.genre).badge}`}>
                       {book.genre?.replace('_', ' ')}
                     </span>
                     <h3 className="font-black text-stone-900 text-base truncate leading-tight">{book.title}</h3>
@@ -287,30 +276,20 @@ function Home() {
                 </div>
 
                 {/* Barra de Progreso adaptada de Feed */}
-                <div className="w-full bg-stone-100 rounded-full h-2 relative flex items-center mt-2 mb-1">
+                <div className="w-full bg-stone-100 rounded-full h-2 relative flex items-center mt-3 mb-1">
                   <div
-                    className={`h-2 rounded-full transition-all duration-500 ${
-                      book.genre === 'fantasia' ? 'bg-purple-400' :
-                      book.genre === 'ciencia_ficcion' ? 'bg-blue-400' :
-                      book.genre === 'thriller' ? 'bg-red-400' :
-                      book.genre === 'romance' ? 'bg-pink-400' :
-                      book.genre === 'historica' ? 'bg-amber-400' :
-                      book.genre === 'terror' ? 'bg-orange-400' :
-                      book.genre === 'no_ficcion' ? 'bg-teal-400' :
-                      book.genre === 'autobiografia' ? 'bg-green-400' :
-                      'bg-stone-400'
-                    }`}
+                    className={`h-2 rounded-full transition-all duration-500 ${getGenreStyle(book.genre).solid}`}
                     style={{ width: `${Math.max(Math.min((book.current_page / book.total_pages) * 100, 100), 2)}%` }}
                   />
-                  <span
-                    className="absolute text-base leading-none transition-all duration-500 z-10"
+                  <div
+                    className={`absolute flex items-center justify-center w-7 h-7 rounded-full shadow-md ring-2 ring-white transition-all duration-500 z-10 ${getGenreStyle(book.genre).solid}`}
                     style={{
-                      left: `calc(${Math.min((book.current_page / book.total_pages) * 100, 96)}% - 8px)`,
-                      top: '-7px'
+                      left: `calc(${Math.min((book.current_page / book.total_pages) * 100, 94)}% - 14px)`,
+                      top: '-12px'
                     }}
                   >
-                    {GENRE_STYLES[book.genre]?.icon || '📖'}
-                  </span>
+                    {(() => { const Icon = getGenreStyle(book.genre).icon; return <Icon size={15} strokeWidth={2.75} className="text-white" /> })()}
+                  </div>
                 </div>
 
                 <div className="flex justify-between items-center mt-2.5">
@@ -358,8 +337,8 @@ function Home() {
                         className="w-12 h-18 object-cover rounded-xl shadow-sm"
                       />
                     ) : (
-                      <div className={`w-12 h-18 rounded-xl flex items-center justify-center text-2xl ${GENRE_STYLES[book.genre]?.color || 'bg-stone-50'}`}>
-                        {GENRE_STYLES[book.genre]?.icon || '📖'}
+                      <div className={`w-12 h-18 rounded-xl flex items-center justify-center ${getGenreStyle(book.genre).badge}`}>
+                        {(() => { const Icon = getGenreStyle(book.genre).icon; return <Icon size={22} strokeWidth={1.6} /> })()}
                       </div>
                     )}
                     <div className="absolute -bottom-1 -right-1 bg-orange-500 rounded-md px-1 py-0.5 shadow-sm">

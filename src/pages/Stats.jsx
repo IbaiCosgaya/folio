@@ -1,20 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
-
-const GENRE_LABELS = {
-  fantasia: '🔮 Fantasía', ciencia_ficcion: '🚀 Ciencia ficción',
-  thriller: '🔪 Thriller', romance: '💕 Romance',
-  historica: '⚔️ Histórica', terror: '👻 Terror',
-  no_ficcion: '📚 No ficción', autobiografia: '✍️ Autobiografía', otro: '📖 Otro'
-}
-
-const GENRE_COLORS = {
-  fantasia: 'bg-purple-500', ciencia_ficcion: 'bg-blue-500',
-  thriller: 'bg-red-500', romance: 'bg-pink-500',
-  historica: 'bg-yellow-600', terror: 'bg-orange-600',
-  no_ficcion: 'bg-teal-500', autobiografia: 'bg-green-500', otro: 'bg-stone-500'
-}
+import { GENRES, getGenreStyle } from '../constants/genres'
 
 function Stats() {
   const [stats, setStats] = useState(null)
@@ -31,26 +18,42 @@ function Stats() {
   async function fetchStats() {
     const { data: { user } } = await supabase.auth.getUser()
 
-    const { data: sessionData } = await supabase
+    // reading_sessions.book_id apunta a user_books.id, de ahí sacamos el género/título
+    // a través de global_books para el calendario.
+    const { data: rawSessions } = await supabase
       .from('reading_sessions')
-      .select('*, books(title, genre)')
+      .select('*, user_books(global_books(title, genre))')
       .eq('user_id', user.id)
       .order('date', { ascending: false })
 
-    const { data: books } = await supabase
-      .from('books')
-      .select('*')
+    // Estantería activa del usuario, para el conteo de libros terminados y género favorito.
+    const { data: userBooks } = await supabase
+      .from('user_books')
+      .select('finished, global_books(genre)')
       .eq('user_id', user.id)
+      .eq('is_active', true)
 
-    if (sessionData && books) {
+    if (rawSessions && userBooks) {
+      // Aplanamos cada sesión al shape "session.books.{title, genre}" que ya usaba el JSX
+      const sessionData = rawSessions.map(s => ({
+        ...s,
+        books: {
+          title: s.user_books?.global_books?.title,
+          genre: s.user_books?.global_books?.genre,
+        },
+      }))
+
       const today = new Date().toISOString().split('T')[0]
       const todayPages = sessionData.filter(s => s.date === today).reduce((sum, s) => sum + s.pages_read, 0)
       const totalPages = sessionData.reduce((sum, s) => sum + s.pages_read, 0)
       const totalMinutes = sessionData.reduce((sum, s) => sum + (s.minutes_read || 0), 0)
-      const booksFinished = books.filter(b => b.finished).length
+      const booksFinished = userBooks.filter(b => b.finished).length
       const streak = calcStreak(sessionData)
       const genreCount = {}
-      books.forEach(b => { if (b.genre) genreCount[b.genre] = (genreCount[b.genre] || 0) + 1 })
+      userBooks.forEach(b => {
+        const genre = b.global_books?.genre
+        if (genre) genreCount[genre] = (genreCount[genre] || 0) + 1
+      })
       const favoriteGenre = Object.entries(genreCount).sort((a, b) => b[1] - a[1])[0]?.[0]
       setStats({ todayPages, totalPages, totalMinutes, booksFinished, streak, favoriteGenre })
       setSessions(sessionData)
@@ -154,7 +157,10 @@ function Stats() {
               {stats.favoriteGenre && (
                 <div className="bg-stone-900 rounded-2xl p-4 border border-stone-800">
                   <p className="text-stone-400 text-xs mb-1">Género favorito</p>
-                  <p className="text-lg font-bold text-white">{GENRE_LABELS[stats.favoriteGenre]}</p>
+                  <p className="text-lg font-bold text-white flex items-center gap-1.5">
+                    {(() => { const Icon = getGenreStyle(stats.favoriteGenre).icon; return <Icon size={18} strokeWidth={1.8} /> })()}
+                    {getGenreStyle(stats.favoriteGenre).label}
+                  </p>
                 </div>
               )}
             </div>
@@ -195,7 +201,7 @@ function Stats() {
                   const daySessions = sessionsByDate[day] || []
                   const hasReading = daySessions.length > 0
                   const genre = daySessions[0]?.books?.genre
-                  const colorClass = genre ? GENRE_COLORS[genre] : ''
+                  const colorClass = genre ? getGenreStyle(genre).solid : ''
                   const dayNum = parseInt(day.split('-')[2])
                   const isToday = day === new Date().toISOString().split('T')[0]
                   return (
@@ -216,10 +222,10 @@ function Stats() {
 
               {/* Leyenda de Géneros */}
               <div className="flex items-center gap-3 mt-3 flex-wrap">
-                {Object.entries(GENRE_COLORS).map(([genre, color]) => (
-                  <div key={genre} className="flex items-center gap-1">
-                    <div className={`w-2.5 h-2.5 rounded-sm ${color}`} />
-                    <span className="text-stone-500 text-xs">{GENRE_LABELS[genre]?.split(' ').slice(1).join(' ')}</span>
+                {GENRES.map(g => (
+                  <div key={g.value} className="flex items-center gap-1">
+                    <div className={`w-2.5 h-2.5 rounded-sm ${g.solid}`} />
+                    <span className="text-stone-500 text-xs">{g.label}</span>
                   </div>
                 ))}
               </div>

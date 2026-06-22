@@ -1,23 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../supabase'
 import { useNavigate } from 'react-router-dom'
-
-const GENRES = [
-  { value: 'fantasia', label: '🔮 Fantasía' },
-  { value: 'ciencia_ficcion', label: '🚀 Ciencia ficción' },
-  { value: 'thriller', label: '🔪 Thriller' },
-  { value: 'romance', label: '💕 Romance' },
-  { value: 'historica', label: '⚔️ Histórica' },
-  { value: 'terror', label: '👻 Terror' },
-  { value: 'no_ficcion', label: '📚 No ficción' },
-  { value: 'autobiografia', label: '✍️ Autobiografía' },
-  { value: 'otro', label: '📖 Otro' },
-]
+import { GENRES } from '../constants/genres'
 
 function AddBook() {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
   const [searching, setSearching] = useState(false)
+  const [searchNote, setSearchNote] = useState('') // aviso no bloqueante (ej. límite de Google alcanzado)
   const [selected, setSelected] = useState(null)
   const [manual, setManual] = useState(false)
   const [title, setTitle] = useState('')
@@ -27,6 +17,7 @@ function AddBook() {
   const [loading, setLoading] = useState(false)
   const [year, setYear] = useState('')
   const navigate = useNavigate()
+  const searchAbortRef = useRef(null)
 
   // Debounce para búsqueda automática mientras el usuario escribe
   useEffect(() => {
@@ -50,7 +41,6 @@ function AddBook() {
       if (existing.is_active) {
         return { error: 'duplicate' }
       }
-      // Estaba desactivado (lo habías quitado de tu lista) → lo reactivamos
       const { error } = await supabase
         .from('user_books')
         .update({ is_active: true, current_page: 0, finished: false })
@@ -68,57 +58,90 @@ function AddBook() {
     return { error: error ? error.message : null }
   }
 
-  // --- Búsqueda en Google Books, con fallback a OpenLibrary si falta portada ---
-  async function fetchOpenLibraryCover(title, author) {
+  // --- Fuente 1: Google Books ---
+  // Si defines VITE_GOOGLE_BOOKS_API_KEY en tu .env, se usa una cuota privada
+  // mucho más alta que la anónima compartida (que se agota fácilmente con 429).
+  async function searchGoogleBooks(q, signal) {
     try {
+      const apiKey = import.meta.env.VITE_GOOGLE_BOOKS_API_KEY
+      const keyParam = apiKey ? `&key=${apiKey}` : ''
       const res = await fetch(
-        `https://openlibrary.org/search.json?q=${encodeURIComponent(`${title} ${author || ''}`)}&limit=1`
+        `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=6${keyParam}`,
+        { signal }
       )
-      const data = await res.json()
-      const coverId = data.docs?.[0]?.cover_i
-      return coverId ? `https://covers.openlibrary.org/b/id/${coverId}-L.jpg` : null
-    } catch (e) {
-      return null
-    }
-  }
 
-  async function searchGoogleBooks(q) {
-    try {
-      const res = await fetch(
-        `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=6`
-      )
+      if (res.status === 429) {
+        console.error('[Google Books] límite de peticiones alcanzado (429)')
+        setSearchNote('Google Books está temporalmente limitado, mostrando resultados de OpenLibrary.')
+        return []
+      }
+      if (!res.ok) {
+        console.error('[Google Books] respuesta no OK:', res.status, res.statusText)
+        return []
+      }
+
       const data = await res.json()
       if (!data.items) return []
-      return Promise.all(data.items.map(async item => {
+
+      return data.items.map(item => {
         const info = item.volumeInfo || {}
-        let cover = info.imageLinks?.thumbnail
-          ? info.imageLinks.thumbnail.replace('http://', 'https://').replace('zoom=1', 'zoom=2')
-          : null
-
-        // Google Books no siempre trae portada — probamos OpenLibrary como respaldo
-        if (!cover) {
-          cover = await fetchOpenLibraryCover(info.title, info.authors?.[0])
-        }
-
         return {
+          source: 'google',
           google_books_id: item.id,
           title: info.title,
           author: info.authors?.[0] || 'Autor desconocido',
           pages: info.pageCount || null,
-          cover,
+          cover: info.imageLinks?.thumbnail
+            ? info.imageLinks.thumbnail.replace('http://', 'https://').replace('zoom=1', 'zoom=2')
+            : null,
           year: info.publishedDate ? parseInt(info.publishedDate.slice(0, 4)) : null,
           isLocal: false,
         }
-      }))
+      })
     } catch (e) {
+      if (e.name === 'AbortError') return [] // búsqueda cancelada porque escribiste algo más, no es un fallo real
+      console.error('[Google Books] fallo de red:', e)
       return []
     }
   }
 
-  // --- Búsqueda híbrida: catálogo local primero, luego Google Books ---
+  // --- Fuente 2: OpenLibrary (no necesita clave, sirve de respaldo si Google falla) ---
+  async function searchOpenLibrary(q, signal) {
+    try {
+      const res = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&limit=6`, { signal })
+      if (!res.ok) {
+        console.error('[OpenLibrary] respuesta no OK:', res.status, res.statusText)
+        return []
+      }
+      const data = await res.json()
+      return (data.docs || []).map(b => ({
+        source: 'openlibrary',
+        google_books_id: null,
+        title: b.title,
+        author: b.author_name?.[0] || 'Autor desconocido',
+        pages: b.number_of_pages_median || null,
+        cover: b.cover_i ? `https://covers.openlibrary.org/b/id/${b.cover_i}-L.jpg` : null,
+        year: b.first_publish_year || null,
+        isLocal: false,
+      }))
+    } catch (e) {
+      if (e.name === 'AbortError') return []
+      console.error('[OpenLibrary] fallo de red:', e)
+      return []
+    }
+  }
+
+  // --- Búsqueda híbrida: catálogo local + Google Books + OpenLibrary en paralelo ---
   async function executeSearch() {
     if (!query.trim()) return
+
+    // Cancela cualquier búsqueda anterior todavía en vuelo (escribiste otra letra antes de que terminara)
+    if (searchAbortRef.current) searchAbortRef.current.abort()
+    const controller = new AbortController()
+    searchAbortRef.current = controller
+
     setSearching(true)
+    setSearchNote('')
 
     try {
       const { data: localBooks, error: dbError } = await supabase
@@ -140,46 +163,42 @@ function AddBook() {
         isLocal: true,
       }))
 
-      const apiResults = await searchGoogleBooks(query)
+      const [googleResults, openLibraryResults] = await Promise.all([
+        searchGoogleBooks(query, controller.signal),
+        searchOpenLibrary(query, controller.signal),
+      ])
 
-      // Evitamos mostrar duplicados visuales: si Google Books trae algo que
-      // ya tenemos en el catálogo (mismo título+autor), nos quedamos con la
-      // versión local (marcada "Ya en Folio") y descartamos la de la API.
+      // Si esta búsqueda fue cancelada mientras esperábamos, no pisamos los
+      // resultados de la búsqueda más reciente que ya está en marcha
+      if (controller.signal.aborted) return
+
+      // Deduplicado por título+autor normalizados: local > Google > OpenLibrary
       const norm = s => (s || '').trim().toLowerCase()
-      const localKeys = new Set(dbResults.map(b => `${norm(b.title)}|${norm(b.author)}`))
-      const filteredApiResults = apiResults.filter(
-        b => !localKeys.has(`${norm(b.title)}|${norm(b.author)}`)
-      )
+      const seenKeys = new Set(dbResults.map(b => `${norm(b.title)}|${norm(b.author)}`))
 
-      setResults([...dbResults, ...filteredApiResults].slice(0, 8))
+      const filteredGoogle = googleResults.filter(b => {
+        const key = `${norm(b.title)}|${norm(b.author)}`
+        if (seenKeys.has(key)) return false
+        seenKeys.add(key)
+        return true
+      })
+
+      const filteredOpenLibrary = openLibraryResults.filter(b => {
+        const key = `${norm(b.title)}|${norm(b.author)}`
+        if (seenKeys.has(key)) return false
+        seenKeys.add(key)
+        return true
+      })
+
+      setResults([...dbResults, ...filteredGoogle, ...filteredOpenLibrary].slice(0, 10))
     } catch (error) {
       console.error('Error global en búsqueda:', error)
     } finally {
-      setSearching(false)
+      if (!controller.signal.aborted) setSearching(false)
     }
   }
 
-  async function handleSelect(book) {
-    // Si el libro ya está en nuestro catálogo (verificado o aprobado), se añade
-    // directamente a la estantería: no tiene sentido volver a pedir sus datos.
-    if (book.isLocal) {
-      setLoading(true)
-      const { data: { user } } = await supabase.auth.getUser()
-      const { error } = await addBookToLibrary(user.id, book.id)
-      setLoading(false)
-      setResults([])
-      setQuery('')
-      if (!error) {
-        navigate('/home')
-      } else if (error === 'duplicate') {
-        alert('Ya tienes este libro en tu lista.')
-      } else {
-        alert('Hubo un error al añadir el libro.')
-      }
-      return
-    }
-
-    // Libro de Google Books o candidato a manual: sí necesita pasar por el formulario
+  function handleSelect(book) {
     setSelected(book)
     setTitle(book.title)
     setAuthor(book.author)
@@ -207,28 +226,52 @@ function AddBook() {
     setYear('')
   }
 
+  // Busca un libro ya existente en global_books por google_books_id (si lo hay)
+  // o, si no, por título+autor (necesario para resultados de OpenLibrary, que no
+  // traen un id estable) — evita crear catálogo duplicado.
+  async function findExistingGlobalBook(book) {
+    if (book.google_books_id) {
+      const { data } = await supabase
+        .from('global_books')
+        .select('id')
+        .eq('google_books_id', book.google_books_id)
+        .maybeSingle()
+      if (data) return data.id
+    }
+    const { data } = await supabase
+      .from('global_books')
+      .select('id')
+      .ilike('title', book.title)
+      .ilike('author', book.author || '')
+      .maybeSingle()
+    return data?.id || null
+  }
+
   async function handleAddBook() {
     if (!title || !author || !totalPages || !genre) return
     setLoading(true)
 
     const { data: { user } } = await supabase.auth.getUser()
 
-    // --- Caso 1: libro venido de Google Books, aún no está en el catálogo ---
-    if (selected && !selected.isLocal) {
-      // Por si dos usuarios lo añaden casi a la vez, comprobamos antes de insertar
-      const { data: existing } = await supabase
-        .from('global_books')
-        .select('id')
-        .eq('google_books_id', selected.google_books_id)
-        .maybeSingle()
+    // --- Caso 1: libro ya existente en el catálogo local ---
+    if (selected?.isLocal) {
+      const { error } = await addBookToLibrary(user.id, selected.id)
+      setLoading(false)
+      if (!error) navigate('/home')
+      else if (error === 'duplicate') alert('Ya tienes este libro en tu lista.')
+      else alert('Hubo un error al añadir el libro.')
+      return
+    }
 
-      let bookId = existing?.id
+    // --- Caso 2: libro de Google Books u OpenLibrary, puede que ya esté en el catálogo ---
+    if (selected && !selected.isLocal) {
+      let bookId = await findExistingGlobalBook(selected)
 
       if (!bookId) {
         const { data: inserted, error } = await supabase
           .from('global_books')
           .insert({
-            google_books_id: selected.google_books_id,
+            google_books_id: selected.google_books_id || null,
             title,
             author,
             genre,
@@ -239,24 +282,19 @@ function AddBook() {
           })
           .select('id')
           .single()
-        if (error) { setLoading(false); return }
+        if (error) { setLoading(false); alert('Hubo un error al guardar el libro.'); return }
         bookId = inserted.id
       }
 
       const { error: ubError } = await addBookToLibrary(user.id, bookId)
       setLoading(false)
-      if (!ubError) {
-        navigate('/home')
-      } else if (ubError === 'duplicate') {
-        alert('Ya tienes este libro en tu lista.')
-      } else {
-        alert('Hubo un error al añadir el libro.')
-      }
+      if (!ubError) navigate('/home')
+      else if (ubError === 'duplicate') alert('Ya tienes este libro en tu lista.')
+      else alert('Hubo un error al añadir el libro.')
       return
     }
 
-    // --- Caso 3: añadido manualmente, no encontrado en ningún sitio ---
-    // No toca global_books directamente: va a revisión del moderador.
+    // --- Caso 3: añadido manualmente, no encontrado en ningún sitio → a revisión ---
     const { error } = await supabase.from('book_requests').insert({
       user_id: user.id,
       title,
@@ -303,11 +341,15 @@ function AddBook() {
               </button>
             </div>
 
+            {searchNote && (
+              <p className="text-amber-500/80 text-xs px-1">{searchNote}</p>
+            )}
+
             {results.length > 0 && (
               <div className="space-y-2">
                 {results.map((book, i) => (
                   <div
-                    key={book.isLocal ? `local-${book.id}` : `google-${book.google_books_id || i}`}
+                    key={book.isLocal ? `local-${book.id}` : `${book.source}-${book.google_books_id || book.title}-${i}`}
                     onClick={() => handleSelect(book)}
                     className="flex items-center justify-between bg-stone-900 rounded-xl p-3 border border-stone-800 cursor-pointer hover:border-amber-500 transition-colors"
                   >
@@ -390,19 +432,23 @@ function AddBook() {
             <div>
               <p className="text-stone-400 text-sm mb-3">Género</p>
               <div className="grid grid-cols-3 gap-2">
-                {GENRES.map(g => (
-                  <button
-                    key={g.value}
-                    onClick={() => setGenre(g.value)}
-                    className={`py-2 px-3 rounded-xl text-sm font-medium transition-colors ${
-                      genre === g.value
-                        ? 'bg-amber-500 text-stone-950'
-                        : 'bg-stone-900 text-stone-400 hover:bg-stone-800'
-                    }`}
-                  >
-                    {g.label}
-                  </button>
-                ))}
+                {GENRES.map(g => {
+                  const Icon = g.icon
+                  return (
+                    <button
+                      key={g.value}
+                      onClick={() => setGenre(g.value)}
+                      className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl text-xs font-medium transition-colors ${
+                        genre === g.value
+                          ? 'bg-amber-500 text-stone-950'
+                          : 'bg-stone-900 text-stone-400 hover:bg-stone-800'
+                      }`}
+                    >
+                      <Icon size={18} strokeWidth={1.8} />
+                      <span className="text-center leading-tight">{g.label}</span>
+                    </button>
+                  )
+                })}
               </div>
             </div>
 

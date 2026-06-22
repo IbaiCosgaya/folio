@@ -1,20 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
+import { GENRES as GENRE_OPTIONS, getGenreStyle } from '../constants/genres'
 
 const ADMIN_ID = '581dd0d6-6240-461a-90b7-224f74d577ab'
-
-const GENRE_OPTIONS = [
-  { value: 'fantasia', label: '🔮 Fantasía' },
-  { value: 'ciencia_ficcion', label: '🚀 Ciencia ficción' },
-  { value: 'thriller', label: '🔪 Thriller' },
-  { value: 'romance', label: '💕 Romance' },
-  { value: 'historica', label: '⚔️ Histórica' },
-  { value: 'terror', label: '👻 Terror' },
-  { value: 'no_ficcion', label: '📚 No ficción' },
-  { value: 'autobiografia', label: '✍️ Autobiografía' },
-  { value: 'otro', label: '📖 Otro' },
-]
 
 function Admin() {
   const [requests, setRequests] = useState([])
@@ -367,9 +356,17 @@ function Admin() {
                     <div>
                       <h3 className="font-semibold text-white text-sm">{book.title}</h3>
                       <p className="text-stone-400 text-xs">{book.author}</p>
-                      {!book.is_verified && (
-                        <span className="text-[10px] text-amber-500 font-semibold">Sin verificar</span>
-                      )}
+                      <div className="flex items-center gap-2 mt-1">
+                        {book.genre && (
+                          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded ${getGenreStyle(book.genre).badge}`}>
+                            {(() => { const Icon = getGenreStyle(book.genre).icon; return <Icon size={11} strokeWidth={2} /> })()}
+                            {getGenreStyle(book.genre).label}
+                          </span>
+                        )}
+                        {!book.is_verified && (
+                          <span className="text-[10px] text-amber-500 font-semibold">Sin verificar</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="flex gap-3">

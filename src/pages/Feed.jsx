@@ -1,18 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
-
-const GENRE_STYLES = {
-  fantasia:       { color: 'bg-purple-100 text-purple-500', icon: '🔮', spine: '#7c3aed' },
-  ciencia_ficcion:{ color: 'bg-blue-100 text-blue-500',    icon: '🚀', spine: '#2563eb' },
-  thriller:       { color: 'bg-red-100 text-red-500',      icon: '🔪', spine: '#dc2626' },
-  romance:        { color: 'bg-pink-100 text-pink-500',     icon: '💕', spine: '#db2777' },
-  historica:      { color: 'bg-amber-100 text-amber-600',  icon: '⚔️', spine: '#d97706' },
-  terror:         { color: 'bg-orange-100 text-orange-500',icon: 'ghost', spine: '#ea580c' },
-  no_ficcion:     { color: 'bg-teal-100 text-teal-500',    icon: '📚', spine: '#0d9488' },
-  autobiografia:  { color: 'bg-green-100 text-green-500',  icon: '✍️', spine: '#16a34a' },
-  otro:           { color: 'bg-stone-100 text-stone-500',  icon: '📖', spine: '#57534e' },
-}
+import { getGenreStyle } from '../constants/genres'
 
 const ADMIN_ID = '581dd0d6-6240-461a-90b7-224f74d577ab'
 
@@ -427,7 +416,7 @@ function Feed() {
           </div>
         ) : (
           sessions.map((session, index) => {
-            const currentGenre = GENRE_STYLES[session.books?.genre] || GENRE_STYLES.otro
+            const currentGenre = getGenreStyle(session.books?.genre)
 
             return (
               <div
@@ -440,7 +429,7 @@ function Feed() {
                   {session.books?.cover_url ? (
                     <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${session.books.cover_url})`, filter: 'blur(30px) brightness(0.65)', transform: 'scale(1.25)' }} />
                   ) : (
-                    <div className={`absolute inset-0 ${currentGenre.color} opacity-40`} />
+                    <div className={`absolute inset-0 ${currentGenre.badge} opacity-40`} />
                   )}
 
                   <div
@@ -469,8 +458,8 @@ function Feed() {
                       {session.books?.cover_url ? (
                         <img src={session.books.cover_url} alt={session.books.title} className="book-flat-cover" loading="lazy" />
                       ) : (
-                        <div className={`book-flat-cover ${currentGenre.color} flex flex-col items-center justify-center p-4 text-center`}>
-                          <span className="text-3xl mb-2">{currentGenre.icon}</span>
+                        <div className={`book-flat-cover ${currentGenre.badge} flex flex-col items-center justify-center p-4 text-center`}>
+                          <currentGenre.icon size={32} strokeWidth={1.6} className="mb-2" />
                           <p className="text-[11px] font-black uppercase tracking-wider line-clamp-4">{session.books?.title}</p>
                         </div>
                       )}
@@ -506,10 +495,7 @@ function Feed() {
                         </div>
                         <div className="w-full bg-stone-100 rounded-full h-1.5 overflow-hidden">
                           <div 
-                            className={`h-full transition-all duration-500 ${
-                              session.books?.genre === 'fantasia' ? 'bg-purple-500' :
-                              session.books?.genre === 'historica' ? 'bg-amber-500' : 'bg-orange-500'
-                            }`}
+                            className={`h-full transition-all duration-500 ${currentGenre.solid}`}
                             style={{ width: `${(session.books.current_page / session.books.total_pages) * 100}%` }}
                           />
                         </div>

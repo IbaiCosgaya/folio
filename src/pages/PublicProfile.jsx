@@ -1,18 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../supabase'
-
-const GENRE_STYLES = {
-  fantasia:       { color: 'bg-purple-500',  icon: '🔮' },
-  ciencia_ficcion:{ color: 'bg-blue-500',    icon: '🚀' },
-  thriller:       { color: 'bg-red-500',     icon: '🔪' },
-  romance:        { color: 'bg-pink-500',    icon: '💕' },
-  historica:      { color: 'bg-yellow-600',  icon: '⚔️' },
-  terror:         { color: 'bg-orange-600',  icon: '👻' },
-  no_ficcion:     { color: 'bg-teal-500',    icon: '📚' },
-  autobiografia:  { color: 'bg-green-500',   icon: '✍️' },
-  otro:           { color: 'bg-stone-500',   icon: '📖' },
-}
+import { getGenreStyle } from '../constants/genres'
 
 function flattenUserBook(ub) {
   return {
@@ -168,8 +157,8 @@ function PublicProfile() {
                   {book.cover_url ? (
                     <img src={book.cover_url} alt={book.title} className="w-10 h-14 object-cover rounded-lg flex-shrink-0" />
                   ) : (
-                    <div className={`w-10 h-14 rounded-lg flex items-center justify-center text-xl flex-shrink-0 ${GENRE_STYLES[book.genre]?.color || 'bg-stone-700'}`}>
-                      {GENRE_STYLES[book.genre]?.icon || '📖'}
+                    <div className={`w-10 h-14 rounded-lg flex items-center justify-center flex-shrink-0 ${getGenreStyle(book.genre).solid} text-white`}>
+                      {(() => { const Icon = getGenreStyle(book.genre).icon; return <Icon size={18} strokeWidth={1.8} /> })()}
                     </div>
                   )}
                   <div className="flex-1">
@@ -177,7 +166,7 @@ function PublicProfile() {
                     <p className="text-stone-400 text-xs">{book.author}</p>
                     <div className="w-full bg-stone-800 rounded-full h-1.5 mt-2">
                       <div
-                        className={`${GENRE_STYLES[book.genre]?.color || 'bg-amber-500'} h-1.5 rounded-full`}
+                        className={`${getGenreStyle(book.genre).solid} h-1.5 rounded-full`}
                         style={{ width: `${Math.max((book.current_page / book.total_pages) * 100, 2)}%` }}
                       />
                     </div>
