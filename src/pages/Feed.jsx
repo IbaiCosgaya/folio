@@ -493,11 +493,20 @@ function Feed() {
                           <span>Progreso Global</span>
                           <span className="font-bold text-orange-500">{Math.round((session.books.current_page / session.books.total_pages) * 100)}%</span>
                         </div>
-                        <div className="w-full bg-stone-100 rounded-full h-1.5 overflow-hidden">
-                          <div 
-                            className={`h-full transition-all duration-500 ${currentGenre.solid}`}
-                            style={{ width: `${(session.books.current_page / session.books.total_pages) * 100}%` }}
+                        <div className="w-full bg-stone-100 rounded-full h-2 relative flex items-center mt-3">
+                          <div
+                            className={`h-2 rounded-full transition-all duration-500 ${currentGenre.solid}`}
+                            style={{ width: `${Math.max((session.books.current_page / session.books.total_pages) * 100, 2)}%` }}
                           />
+                          <div
+                            className={`absolute flex items-center justify-center w-6 h-6 rounded-full shadow-md ring-2 ring-white transition-all duration-500 z-10 ${currentGenre.solid}`}
+                            style={{
+                              left: `calc(${Math.min((session.books.current_page / session.books.total_pages) * 100, 94)}% - 12px)`,
+                              top: '-8px'
+                            }}
+                          >
+                            {(() => { const Icon = currentGenre.icon; return <Icon size={13} strokeWidth={2.75} className="text-white" /> })()}
+                          </div>
                         </div>
                       </div>
                     )
