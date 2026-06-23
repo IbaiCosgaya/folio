@@ -11,22 +11,17 @@ function Stats() {
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear())
   const navigate = useNavigate()
 
-  useEffect(() => {
-    fetchStats()
-  }, [])
+  useEffect(() => { fetchStats() }, [])
 
   async function fetchStats() {
     const { data: { user } } = await supabase.auth.getUser()
 
-    // reading_sessions.book_id apunta a user_books.id, de ahí sacamos el género/título
-    // a través de global_books para el calendario.
     const { data: rawSessions } = await supabase
       .from('reading_sessions')
       .select('*, user_books(global_books(title, genre))')
       .eq('user_id', user.id)
       .order('date', { ascending: false })
 
-    // Estantería activa del usuario, para el conteo de libros terminados y género favorito.
     const { data: userBooks } = await supabase
       .from('user_books')
       .select('finished, global_books(genre)')
@@ -34,7 +29,6 @@ function Stats() {
       .eq('is_active', true)
 
     if (rawSessions && userBooks) {
-      // Aplanamos cada sesión al shape "session.books.{title, genre}" que ya usaba el JSX
       const sessionData = rawSessions.map(s => ({
         ...s,
         books: {
@@ -49,13 +43,37 @@ function Stats() {
       const totalMinutes = sessionData.reduce((sum, s) => sum + (s.minutes_read || 0), 0)
       const booksFinished = userBooks.filter(b => b.finished).length
       const streak = calcStreak(sessionData)
+      const longestStreak = calcLongestStreak(sessionData)
+
+      // Velocidad lectora media (páginas/hora, solo sesiones con minutos registrados)
+      const sessionsWithTime = sessionData.filter(s => s.minutes_read > 0)
+      const avgSpeed = sessionsWithTime.length > 0
+        ? Math.round(sessionsWithTime.reduce((sum, s) => sum + (s.pages_read / s.minutes_read * 60), 0) / sessionsWithTime.length)
+        : null
+
+      // Mejor hora para leer (hora del día con más sesiones — usando created_at)
+      const hourCount = {}
+      sessionData.forEach(s => {
+        if (s.created_at) {
+          const h = new Date(s.created_at).getHours()
+          hourCount[h] = (hourCount[h] || 0) + s.pages_read
+        }
+      })
+      const bestHourEntry = Object.entries(hourCount).sort((a, b) => b[1] - a[1])[0]
+      const bestHour = bestHourEntry ? formatHourRange(parseInt(bestHourEntry[0])) : null
+
+      // Género favorito
       const genreCount = {}
       userBooks.forEach(b => {
         const genre = b.global_books?.genre
         if (genre) genreCount[genre] = (genreCount[genre] || 0) + 1
       })
       const favoriteGenre = Object.entries(genreCount).sort((a, b) => b[1] - a[1])[0]?.[0]
-      setStats({ todayPages, totalPages, totalMinutes, booksFinished, streak, favoriteGenre })
+
+      // Páginas por mes — últimos 6 meses
+      const monthlyPages = calcMonthlyPages(sessionData, 6)
+
+      setStats({ todayPages, totalPages, totalMinutes, booksFinished, streak, longestStreak, avgSpeed, bestHour, favoriteGenre, monthlyPages })
       setSessions(sessionData)
     }
     setLoading(false)
@@ -75,7 +93,54 @@ function Stats() {
     return streak
   }
 
-  if (loading) return <div className="min-h-screen bg-stone-950 flex items-center justify-center text-white">Cargando...</div>
+  function calcLongestStreak(sessions) {
+    if (!sessions.length) return 0
+    const dates = [...new Set(sessions.map(s => s.date))].sort()
+    let longest = 1, current = 1
+    for (let i = 1; i < dates.length; i++) {
+      const prev = new Date(dates[i - 1])
+      const curr = new Date(dates[i])
+      const diff = Math.floor((curr - prev) / (1000 * 60 * 60 * 24))
+      if (diff === 1) { current++; longest = Math.max(longest, current) }
+      else current = 1
+    }
+    return longest
+  }
+
+  function formatHourRange(h) {
+    const labels = {
+      5: 'Madrugada', 6: 'Madrugada', 7: 'Mañana temprano', 8: 'Mañana',
+      9: 'Mañana', 10: 'Mañana', 11: 'Mediodía', 12: 'Mediodía',
+      13: 'Mediodía', 14: 'Tarde', 15: 'Tarde', 16: 'Tarde',
+      17: 'Tarde', 18: 'Tarde', 19: 'Noche', 20: 'Noche',
+      21: 'Noche', 22: 'Noche tardía', 23: 'Noche tardía', 0: 'Madrugada',
+    }
+    return labels[h] || `${h}:00h`
+  }
+
+  function calcMonthlyPages(sessions, months) {
+    const result = []
+    const now = new Date()
+    for (let i = months - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      const pages = sessions
+        .filter(s => s.date?.startsWith(key))
+        .reduce((sum, s) => sum + s.pages_read, 0)
+      result.push({
+        label: d.toLocaleDateString('es-ES', { month: 'short' }),
+        pages,
+        key,
+      })
+    }
+    return result
+  }
+
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center" style={{ background: '#f8f6f2' }}>
+      <p className="text-stone-400 text-sm tracking-wide">cargando...</p>
+    </div>
+  )
 
   const sessionsByDate = {}
   sessions.forEach(s => {
@@ -96,102 +161,175 @@ function Stats() {
     return days
   })()
 
+  const maxMonthlyPages = stats?.monthlyPages ? Math.max(...stats.monthlyPages.map(m => m.pages), 1) : 1
+
   return (
-    <div className="min-h-screen bg-stone-950 text-white pb-20">
+    <div className="min-h-screen pb-32 antialiased" style={{ background: '#f8f6f2', fontFamily: "'Inter', -apple-system, sans-serif" }}>
 
-      {/* Header / Navbar */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-stone-800">
-        <h1 className="text-xl font-bold tracking-tight">folio</h1>
+      {/* Blur superior */}
+      <div className="fixed top-0 left-0 right-0 z-30 h-20 pointer-events-none"
+        style={{
+          background: 'linear-gradient(to bottom, rgba(248,246,242,1) 0%, rgba(248,246,242,0.8) 60%, transparent 100%)',
+          backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+          maskImage: 'linear-gradient(to bottom, black 40%, transparent 100%)',
+          WebkitMaskImage: 'linear-gradient(to bottom, black 40%, transparent 100%)',
+        }}
+      />
+
+      {/* Header */}
+      <div className="px-5 pt-12 pb-2 relative z-10">
+        <p className="text-[22px] font-black text-stone-900 tracking-tight">Estadísticas</p>
+        <p className="text-stone-400 text-[13px] mt-0.5">Tu actividad lectora</p>
       </div>
 
-      {/* Tabs de Navegación */}
-      <div className="flex border-b border-stone-800 sticky top-0 z-10 bg-stone-950">
-        <button
-          onClick={() => navigate('/feed')}
-          className="flex-1 py-3 text-sm font-semibold text-stone-400 hover:text-white transition-colors"
-        >
-          Inicio
-        </button>
-        <button
-          onClick={() => navigate('/home')}
-          className="flex-1 py-3 text-sm font-semibold text-stone-400 hover:text-white transition-colors"
-        >
-          Registro
-        </button>
-        <button className="flex-1 py-3 text-sm font-semibold text-white border-b-2 border-amber-500">
-          Estadísticas
-        </button>
-        <button
-          onClick={() => navigate('/profile')}
-          className="flex-1 py-3 text-sm font-semibold text-stone-400 hover:text-white transition-colors"
-        >
-          Perfil
-        </button>
-      </div>
-
-      <div className="px-6 py-8 space-y-6">
+      <div className="px-5 py-4 space-y-5 max-w-md mx-auto">
         {stats && (
           <>
-            {/* Grid de Métricas usando tu diseño original */}
+            {/* ── Métricas principales ─────────────────────────────────────────── */}
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-stone-900 rounded-2xl p-4 border border-stone-800">
-                <p className="text-stone-400 text-xs mb-1">Páginas hoy</p>
-                <p className="text-3xl font-bold text-amber-500">{stats.todayPages}</p>
+
+              <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm">
+                <p className="text-stone-400 text-xs font-semibold uppercase tracking-wider mb-1">Hoy</p>
+                <p className="text-3xl font-black text-orange-500">{stats.todayPages}</p>
+                <p className="text-stone-400 text-xs mt-0.5">páginas</p>
               </div>
-              <div className="bg-stone-900 rounded-2xl p-4 border border-stone-800">
-                <p className="text-stone-400 text-xs mb-1">Racha</p>
-                <p className="text-3xl font-bold text-amber-500">{stats.streak} 🔥</p>
+
+              <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm">
+                <p className="text-stone-400 text-xs font-semibold uppercase tracking-wider mb-1">Racha actual</p>
+                <p className="text-3xl font-black text-orange-500">{stats.streak}</p>
+                <p className="text-stone-400 text-xs mt-0.5">días seguidos</p>
               </div>
-              <div className="bg-stone-900 rounded-2xl p-4 border border-stone-800">
-                <p className="text-stone-400 text-xs mb-1">Páginas totales</p>
-                <p className="text-3xl font-bold text-white">{stats.totalPages}</p>
+
+              <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm">
+                <p className="text-stone-400 text-xs font-semibold uppercase tracking-wider mb-1">Total páginas</p>
+                <p className="text-3xl font-black text-stone-900">{stats.totalPages.toLocaleString()}</p>
+                <p className="text-stone-400 text-xs mt-0.5">en toda tu historia</p>
               </div>
-              <div className="bg-stone-900 rounded-2xl p-4 border border-stone-800">
-                <p className="text-stone-400 text-xs mb-1">Minutos leídos</p>
-                <p className="text-3xl font-bold text-white">{stats.totalMinutes}</p>
+
+              <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm">
+                <p className="text-stone-400 text-xs font-semibold uppercase tracking-wider mb-1">Racha máxima</p>
+                <p className="text-3xl font-black text-stone-900">{stats.longestStreak}</p>
+                <p className="text-stone-400 text-xs mt-0.5">días consecutivos</p>
               </div>
-              <div className="bg-stone-900 rounded-2xl p-4 border border-stone-800">
-                <p className="text-stone-400 text-xs mb-1">Libros terminados</p>
-                <p className="text-3xl font-bold text-white">{stats.booksFinished}</p>
-              </div>
+
+              {stats.avgSpeed && (
+                <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm">
+                  <p className="text-stone-400 text-xs font-semibold uppercase tracking-wider mb-1">Velocidad media</p>
+                  <p className="text-3xl font-black text-stone-900">{stats.avgSpeed}</p>
+                  <p className="text-stone-400 text-xs mt-0.5">págs. por hora</p>
+                </div>
+              )}
+
+              {stats.bestHour && (
+                <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm">
+                  <p className="text-stone-400 text-xs font-semibold uppercase tracking-wider mb-1">Mejor momento</p>
+                  <p className="text-lg font-black text-stone-900 leading-tight mt-1">{stats.bestHour}</p>
+                  <p className="text-stone-400 text-xs mt-0.5">cuando más lees</p>
+                </div>
+              )}
+
               {stats.favoriteGenre && (
-                <div className="bg-stone-900 rounded-2xl p-4 border border-stone-800">
-                  <p className="text-stone-400 text-xs mb-1">Género favorito</p>
-                  <p className="text-lg font-bold text-white flex items-center gap-1.5">
-                    {(() => { const Icon = getGenreStyle(stats.favoriteGenre).icon; return <Icon size={18} strokeWidth={1.8} /> })()}
+                <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm col-span-2">
+                  <p className="text-stone-400 text-xs font-semibold uppercase tracking-wider mb-2">Género favorito</p>
+                  <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-bold ${getGenreStyle(stats.favoriteGenre).badge}`}>
+                    {(() => { const Icon = getGenreStyle(stats.favoriteGenre).icon; return <Icon size={15} strokeWidth={2} /> })()}
                     {getGenreStyle(stats.favoriteGenre).label}
-                  </p>
+                  </div>
                 </div>
               )}
             </div>
 
-            {/* Calendario de Actividad de Lectura */}
-            <div>
+            {/* ── Libros terminados → Mi Biblioteca ───────────────────────────── */}
+            <button
+              onClick={() => navigate('/biblioteca')}
+              className="w-full bg-stone-900 hover:bg-stone-800 active:scale-[0.99] rounded-2xl p-4 flex items-center justify-between shadow-sm transition-all"
+            >
+              <div className="text-left">
+                <p className="text-white text-xs font-semibold uppercase tracking-wider mb-0.5 opacity-60">Mi Biblioteca</p>
+                <p className="text-white text-2xl font-black">{stats.booksFinished} libros terminados</p>
+                <p className="text-stone-400 text-xs mt-0.5">Ver mi colección →</p>
+              </div>
+              <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center flex-shrink-0">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 016.5 2z"/>
+                </svg>
+              </div>
+            </button>
+
+            {/* ── Gráfico de páginas por mes ───────────────────────────────────── */}
+            <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm">
+              <p className="text-stone-400 text-xs font-semibold uppercase tracking-wider mb-4">Páginas por mes</p>
+              <div className="flex items-end gap-1.5 h-28">
+                {stats.monthlyPages.map((m, i) => {
+                  const isCurrentMonth = i === stats.monthlyPages.length - 1
+                  const height = m.pages > 0 ? Math.max((m.pages / maxMonthlyPages) * 100, 6) : 4
+                  return (
+                    <div key={m.key} className="flex-1 flex flex-col items-center gap-1.5">
+                      <p className="text-[9px] text-stone-400 font-medium">{m.pages > 0 ? m.pages : ''}</p>
+                      <div className="w-full flex flex-col justify-end" style={{ height: '80px' }}>
+                        <div
+                          className={`w-full rounded-lg transition-all duration-500 ${isCurrentMonth ? 'bg-orange-400' : 'bg-stone-200'}`}
+                          style={{ height: `${height}%` }}
+                        />
+                      </div>
+                      <p className={`text-[10px] font-semibold capitalize ${isCurrentMonth ? 'text-orange-500' : 'text-stone-400'}`}>{m.label}</p>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* ── Minutos leídos ───────────────────────────────────────────────── */}
+            {stats.totalMinutes > 0 && (
+              <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm">
+                <p className="text-stone-400 text-xs font-semibold uppercase tracking-wider mb-1">Tiempo total leyendo</p>
+                <div className="flex items-baseline gap-2 mt-1">
+                  {stats.totalMinutes >= 60 ? (
+                    <>
+                      <p className="text-3xl font-black text-stone-900">{Math.floor(stats.totalMinutes / 60)}</p>
+                      <p className="text-stone-400 text-sm">h</p>
+                      <p className="text-3xl font-black text-stone-900">{stats.totalMinutes % 60}</p>
+                      <p className="text-stone-400 text-sm">min</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-3xl font-black text-stone-900">{stats.totalMinutes}</p>
+                      <p className="text-stone-400 text-sm">minutos</p>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ── Calendario de actividad ──────────────────────────────────────── */}
+            <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm">
               <div className="flex items-center justify-between mb-3">
-                <p className="text-stone-400 text-sm">Actividad de lectura</p>
-                <div className="flex items-center gap-2">
+                <p className="text-stone-400 text-xs font-semibold uppercase tracking-wider">Actividad</p>
+                <div className="flex items-center gap-1">
                   <button
-                    onClick={() => setCalendarMonth(m => m - 1)}
-                    className="text-stone-400 hover:text-white text-sm transition-colors px-2"
-                  >
-                    ←
-                  </button>
-                  <span className="text-stone-300 text-sm font-medium w-28 text-center">
+                    onClick={() => {
+                      if (calendarMonth === 0) { setCalendarMonth(11); setCalendarYear(y => y - 1) }
+                      else setCalendarMonth(m => m - 1)
+                    }}
+                    className="w-7 h-7 rounded-full bg-stone-100 hover:bg-stone-200 flex items-center justify-center text-stone-500 text-xs transition-colors"
+                  >←</button>
+                  <span className="text-stone-600 text-xs font-semibold w-24 text-center capitalize">
                     {new Date(calendarYear, calendarMonth).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
                   </span>
                   <button
-                    onClick={() => setCalendarMonth(m => m + 1)}
-                    className="text-stone-400 hover:text-white text-sm transition-colors px-2"
+                    onClick={() => {
+                      if (calendarMonth === 11) { setCalendarMonth(0); setCalendarYear(y => y + 1) }
+                      else setCalendarMonth(m => m + 1)
+                    }}
                     disabled={calendarMonth >= new Date().getMonth() && calendarYear >= new Date().getFullYear()}
-                  >
-                    →
-                  </button>
+                    className="w-7 h-7 rounded-full bg-stone-100 hover:bg-stone-200 flex items-center justify-center text-stone-500 text-xs transition-colors disabled:opacity-30"
+                  >→</button>
                 </div>
               </div>
 
               <div className="grid grid-cols-7 gap-1 mb-1">
                 {['L','M','X','J','V','S','D'].map(d => (
-                  <div key={d} className="text-center text-stone-600 text-xs py-1">{d}</div>
+                  <div key={d} className="text-center text-stone-400 text-[10px] font-semibold py-1">{d}</div>
                 ))}
               </div>
 
@@ -207,11 +345,11 @@ function Stats() {
                   return (
                     <div
                       key={day}
-                      title={`${day}${hasReading ? ` · ${daySessions.reduce((s,x) => s + x.pages_read, 0)} páginas` : ''}`}
-                      className={`aspect-square rounded-md flex items-center justify-center text-xs font-medium transition-all
-                        ${hasReading ? colorClass || 'bg-amber-500' : 'bg-stone-800'}
-                        ${isToday ? 'ring-2 ring-amber-400' : ''}
-                        ${hasReading ? 'text-white' : 'text-stone-600'}
+                      title={`${day}${hasReading ? ` · ${daySessions.reduce((s, x) => s + x.pages_read, 0)} págs.` : ''}`}
+                      className={`aspect-square rounded-lg flex items-center justify-center text-[11px] font-semibold transition-all
+                        ${hasReading ? colorClass || 'bg-orange-400' : 'bg-stone-100'}
+                        ${isToday ? 'ring-2 ring-orange-400 ring-offset-1' : ''}
+                        ${hasReading ? 'text-white' : 'text-stone-400'}
                       `}
                     >
                       {dayNum}
@@ -220,19 +358,56 @@ function Stats() {
                 })}
               </div>
 
-              {/* Leyenda de Géneros */}
-              <div className="flex items-center gap-3 mt-3 flex-wrap">
-                {GENRES.map(g => (
-                  <div key={g.value} className="flex items-center gap-1">
-                    <div className={`w-2.5 h-2.5 rounded-sm ${g.solid}`} />
-                    <span className="text-stone-500 text-xs">{g.label}</span>
+              {/* Leyenda compacta — solo géneros con actividad */}
+              {(() => {
+                const activeGenres = [...new Set(sessions.map(s => s.books?.genre).filter(Boolean))]
+                return activeGenres.length > 0 ? (
+                  <div className="flex items-center gap-2 mt-3 flex-wrap">
+                    {activeGenres.map(gv => {
+                      const g = getGenreStyle(gv)
+                      return (
+                        <div key={gv} className="flex items-center gap-1">
+                          <div className={`w-2.5 h-2.5 rounded-sm ${g.solid}`} />
+                          <span className="text-stone-400 text-[10px]">{g.label}</span>
+                        </div>
+                      )
+                    })}
                   </div>
-                ))}
-              </div>
+                ) : null
+              })()}
             </div>
           </>
         )}
       </div>
+
+      {/* Navbar flotante — Feed / Registro / Stats (activo) / Biblioteca */}
+      <div
+        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 px-3 py-2 rounded-full border border-white/40"
+        style={{
+          background: 'rgba(255,255,255,0.55)',
+          backdropFilter: 'blur(24px) saturate(2)',
+          WebkitBackdropFilter: 'blur(24px) saturate(2)',
+          boxShadow: '0 4px 24px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.8)',
+          width: '85%', maxWidth: '360px',
+        }}
+      >
+        {[
+          { label: 'Inicio', path: '/feed', icon: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/><path d="M9 21V12h6v9"/></svg> },
+          { label: 'Registro', path: '/home', icon: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 016.5 2z"/></svg> },
+          { label: 'Stats', path: '/stats', active: true, icon: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
+          { label: 'Biblioteca', path: '/biblioteca', icon: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 016.5 2z"/></svg> },
+        ].map(item => (
+          <button
+            key={item.path}
+            onClick={() => navigate(item.path)}
+            className={`flex-1 py-2 flex flex-col items-center gap-1 rounded-full transition-all ${item.active ? 'text-orange-500' : 'text-stone-400 hover:text-stone-700'}`}
+          >
+            {item.icon()}
+            <span className="text-[9px] font-semibold tracking-tight">{item.label}</span>
+          </button>
+        ))}
+      </div>
+
     </div>
   )
 }

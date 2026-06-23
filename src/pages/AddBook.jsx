@@ -476,9 +476,15 @@ function AddBook() {
 
               <button
                 onClick={handleManual}
-                className="w-full text-stone-400 hover:text-orange-500 text-sm py-2 transition-colors font-medium"
+                className="w-full flex items-center justify-between bg-white hover:bg-stone-50 active:scale-[0.99] text-stone-700 rounded-2xl px-5 py-4 border border-stone-200/60 shadow-sm transition-all"
               >
-                No encuentro mi libro → Añadirlo manualmente
+                <div className="text-left">
+                  <p className="text-sm font-bold leading-tight">No encuentro mi libro</p>
+                  <p className="text-stone-400 text-xs mt-0.5">Añádelo manualmente</p>
+                </div>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-stone-300 flex-shrink-0">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
               </button>
             </div>
           )}
@@ -488,11 +494,22 @@ function AddBook() {
             (searchMode === 'title' && query.length > 2) ||
             (searchMode === 'author' && authorQuery.length > 2)
           ) && (
-            <div className="bg-white rounded-2xl p-8 text-center border border-stone-100 shadow-sm">
-              <p className="text-stone-400 text-sm font-medium">Sin resultados</p>
-              <p className="text-stone-300 text-xs mt-1">Prueba con otro término o añádelo manualmente</p>
-              <button onClick={handleManual} className="mt-4 text-orange-500 text-sm font-semibold hover:text-orange-600 transition-colors">
-                Añadir manualmente →
+            <div className="space-y-2.5">
+              <div className="bg-white rounded-2xl p-6 text-center border border-stone-100 shadow-sm">
+                <p className="text-stone-500 text-sm font-semibold">Sin resultados para "{searchMode === 'title' ? query : authorQuery}"</p>
+                <p className="text-stone-300 text-xs mt-1">Prueba con otro término o añádelo tú mismo</p>
+              </div>
+              <button
+                onClick={handleManual}
+                className="w-full flex items-center justify-between bg-stone-900 hover:bg-stone-800 active:scale-[0.99] text-white rounded-2xl px-5 py-4 shadow-sm transition-all"
+              >
+                <div className="text-left">
+                  <p className="text-sm font-bold leading-tight">Añadir manualmente</p>
+                  <p className="text-stone-400 text-xs mt-0.5">Rellena los datos tú mismo</p>
+                </div>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-stone-400 flex-shrink-0">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
               </button>
             </div>
           )}
