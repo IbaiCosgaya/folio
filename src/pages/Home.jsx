@@ -31,6 +31,7 @@ function Home() {
   const [loading, setLoading] = useState(true)
   const [editingRating, setEditingRating] = useState(null)
   const [pendingCount, setPendingCount] = useState(0)
+  const [predictions, setPredictions] = useState({}) // { user_book_id: dias_estimados }
   const navigate = useNavigate()
 
   const ADMIN_ID = '581dd0d6-6240-461a-90b7-224f74d577ab'
@@ -56,9 +57,40 @@ function Home() {
 
       if (data) {
         const flat = data.map(flattenUserBook)
-        setBooks(flat.filter(b => !b.finished && b.current_page > 0))
+        const activeReading = flat.filter(b => !b.finished && b.current_page > 0)
+        setBooks(activeReading)
         setUnstartedBooks(flat.filter(b => !b.finished && b.current_page === 0))
         setFinishedBooks(flat.filter(b => b.finished))
+
+        // Predicción: media de páginas/día por libro en los últimos 14 días
+        if (activeReading.length > 0) {
+          const fourteenDaysAgo = new Date()
+          fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14)
+          const cutoff = fourteenDaysAgo.toISOString().split('T')[0]
+
+          const { data: recentSessions } = await supabase
+            .from('reading_sessions')
+            .select('book_id, pages_read')
+            .eq('user_id', user.id)
+            .gte('date', cutoff)
+
+          if (recentSessions) {
+            const pagesByBook = {}
+            recentSessions.forEach(s => {
+              pagesByBook[s.book_id] = (pagesByBook[s.book_id] || 0) + s.pages_read
+            })
+            const pred = {}
+            activeReading.forEach(book => {
+              const totalReadLast14 = pagesByBook[book.id] || 0
+              const avgPerDay = totalReadLast14 / 14
+              if (avgPerDay > 0) {
+                const remaining = book.total_pages - book.current_page
+                pred[book.id] = Math.ceil(remaining / avgPerDay)
+              }
+            })
+            setPredictions(pred)
+          }
+        }
       }
 
       if (user.id === ADMIN_ID) {
@@ -296,7 +328,15 @@ function Home() {
                   <p className="text-stone-400 text-[11px] font-semibold">
                     Página <span className="text-stone-700 font-bold">{book.current_page}</span> de <span className="text-stone-700">{book.total_pages}</span>
                   </p>
+                  {predictions[book.id] && (
+                    <p className="text-[11px] font-semibold text-orange-500">
+                      ~{predictions[book.id] === 1 ? 'mañana' : `${predictions[book.id]} días`}
+                    </p>
+                  )}
                 </div>
+                {predictions[book.id] && (
+                  <p className="text-stone-300 text-[10px] mt-0.5">A tu ritmo actual</p>
+                )}
 
                 <div className="flex gap-2.5 mt-4 pt-3.5 border-t border-stone-100/70">
                   <button
