@@ -42,9 +42,11 @@ function ReadingSession() {
     const pagesRead = parseInt(currentPage) - book.current_page
     const finished = parseInt(currentPage) >= book.total_pages
 
+    // CAMBIO APLICADO: Añadido finished_at de forma condicional si se termina el libro
     await supabase.from('user_books').update({
       current_page: parseInt(currentPage),
-      finished: finished
+      finished: finished,
+      ...(finished ? { finished_at: new Date().toISOString() } : {})
     }).eq('id', id)
 
     if (finished) {

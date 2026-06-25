@@ -10,6 +10,7 @@ import Register from './pages/Register'
 import Stats from './pages/Stats'
 import BookNotes from './pages/BookNotes'
 import PublicProfile from './pages/PublicProfile'
+import Biblioteca from './pages/Biblioteca'
 
 function App() {
   return (
@@ -26,6 +27,7 @@ function App() {
         <Route path="/notes/:id" element={<BookNotes />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/user/:id" element={<PublicProfile />} />
+        <Route path="/biblioteca" element={<Biblioteca />} />
       </Routes>
     </BrowserRouter>
   )
