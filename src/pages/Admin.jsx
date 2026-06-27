@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { GENRES as GENRE_OPTIONS, getGenreStyle } from '../constants/genres'
-
-const ADMIN_ID = '581dd0d6-6240-461a-90b7-224f74d577ab'
+import { ADMIN_ID } from '../constants/config'
 
 function Admin() {
   const [requests, setRequests] = useState([])

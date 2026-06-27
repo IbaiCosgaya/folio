@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { getGenreStyle } from '../constants/genres'
+import Navbar from '../components/layout/Navbar' // 🔥 AÑADIDO: Importación del componente global
+import { ADMIN_ID } from '../constants/config'
 
 // Convierte una fila de user_books (con global_books anidado) en el shape
 // plano que ya usaba el resto del componente, para no tocar el JSX.
@@ -33,8 +35,7 @@ function Home() {
   const [pendingCount, setPendingCount] = useState(0)
   const [predictions, setPredictions] = useState({}) // { user_book_id: dias_estimados }
   const navigate = useNavigate()
-
-  const ADMIN_ID = '581dd0d6-6240-461a-90b7-224f74d577ab'
+  
 
   useEffect(() => {
     fetchBooks()
@@ -359,158 +360,10 @@ function Home() {
 
         {/* Nota: el estado "vacío" ahora vive dentro de la sección Mi Lista de arriba */}
 
-        {/* 4. LISTADO DE LIBROS TERMINADOS (Al final del todo) */}
-        {finishedBooks.length > 0 && (
-          <div className="mt-6">
-            <div className="flex items-center gap-2 text-stone-400 mb-3.5 px-1">
-              <span className="text-xs font-black tracking-wider uppercase">Libros terminados ✅</span>
-            </div>
-
-            <div className="space-y-3">
-              {finishedBooks.map(book => (
-                <div key={book.id} className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm flex items-center gap-4">
-                  <div className="relative flex-shrink-0">
-                    {book.cover_url ? (
-                      <img
-                        src={book.cover_url}
-                        alt={book.title}
-                        className="w-12 h-18 object-cover rounded-xl shadow-sm"
-                      />
-                    ) : (
-                      <div className={`w-12 h-18 rounded-xl flex items-center justify-center ${getGenreStyle(book.genre).badge}`}>
-                        {(() => { const Icon = getGenreStyle(book.genre).icon; return <Icon size={22} strokeWidth={1.6} /> })()}
-                      </div>
-                    )}
-                    <div className="absolute -bottom-1 -right-1 bg-orange-500 rounded-md px-1 py-0.5 shadow-sm">
-                      <span className="text-white text-[8px] font-black">100%</span>
-                    </div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-bold text-stone-900 text-[14px] truncate leading-tight">{book.title}</h3>
-                    <p className="text-stone-400 text-xs font-medium truncate mt-0.5 mb-2">{book.author}</p>
-
-                    <div className="flex items-center gap-3">
-                      <div className="flex gap-0.5">
-                        {[1, 2, 3, 4, 5].map(star => (
-                          <button
-                            key={star}
-                            onClick={() => !book.rating || editingRating === book.id ? handleRating(book.id, star) : null}
-                            className={`text-base transition-colors ${
-                              star <= (book.rating || 0)
-                                ? 'text-amber-400'
-                                : book.rating && editingRating !== book.id
-                                ? 'text-stone-200 cursor-default'
-                                : 'text-stone-200 hover:text-amber-400'
-                            }`}
-                          >
-                            ★
-                          </button>
-                        ))}
-                      </div>
-
-                      {book.rating && editingRating !== book.id && (
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => setEditingRating(book.id)}
-                            className="text-stone-400 hover:text-stone-600 text-[10px] font-bold"
-                          >
-                            Editar
-                          </button>
-                          <span className="text-stone-200 text-xs">|</span>
-                          <button
-                            onClick={() => navigate(`/notes/${book.id}`)}
-                            className="text-orange-500 hover:text-orange-600 text-[10px] font-bold"
-                          >
-                            Diario
-                          </button>
-                        </div>
-                      )}
-
-                      {editingRating === book.id && (
-                        <button
-                          onClick={() => setEditingRating(null)}
-                          className="text-stone-600 hover:text-stone-900 text-[10px] font-black uppercase tracking-wider bg-stone-100 px-2 py-0.5 rounded-md"
-                        >
-                          Listo
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
       </div>
 
-      {/* Navbar flotante idéntica a FEED (Con "Registro" Activo) */}
-      <div
-        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 px-3 py-2 rounded-full border border-white/40"
-        style={{
-          background: 'rgba(255, 255, 255, 0.45)',
-          backdropFilter: 'blur(24px) saturate(2)',
-          WebkitBackdropFilter: 'blur(24px) saturate(2)',
-          boxShadow: '0 4px 24px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.8)',
-          width: '85%',
-          maxWidth: '360px',
-        }}
-      >
-        {[
-          {
-            label: 'Inicio', path: '/feed', active: false,
-            icon: () => (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/>
-                <path d="M9 21V12h6v9"/>
-              </svg>
-            )
-          },
-          {
-            label: 'Registro', path: '/home', active: true,
-            icon: (active) => (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 19.5A2.5 2.5 0 016.5 17H20"/>
-                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>
-                <line x1="9" y1="7" x2="15" y2="7"/>
-                <line x1="9" y1="11" x2="15" y2="11"/>
-              </svg>
-            )
-          },
-          {
-            label: 'Stats', path: '/stats', active: false,
-            icon: () => (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="20" x2="18" y2="10"/>
-                <line x1="12" y1="20" x2="12" y2="4"/>
-                <line x1="6" y1="20" x2="6" y2="14"/>
-              </svg>
-            )
-          },
-          {
-            label: 'Biblioteca', path: '/biblioteca', active: false,
-            icon: (active) => (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 19.5A2.5 2.5 0 016.5 17H20"/>
-                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 016.5 2z"/>
-              </svg>
-            )
-          },
-        ].map(item => (
-          <button
-            key={item.path}
-            onClick={() => navigate(item.path)}
-            className={`flex-1 py-2 flex flex-col items-center gap-1 rounded-full transition-all ${
-              item.active
-                ? 'text-orange-500'
-                : 'text-stone-400 hover:text-stone-700'
-            }`}
-          >
-            {item.icon(item.active)}
-            <span className="text-[9px] font-semibold tracking-tight">{item.label}</span>
-          </button>
-        ))}
-      </div>
+      {/* 🔥 AÑADIDO: Inclusión de la Navbar global al final de la página */}
+      <Navbar active="/home" />
 
     </div>
   )

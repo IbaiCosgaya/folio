@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { GENRES, getGenreStyle } from '../constants/genres'
+import Navbar from '../components/layout/Navbar' //  AÑADIDO: Importación del componente global
 
 function Stats() {
   const [stats, setStats] = useState(null)
@@ -266,7 +267,7 @@ function Stats() {
                   return (
                     <div key={m.key} className="flex-1 flex flex-col items-center gap-1.5">
                       <p className="text-[9px] text-stone-400 font-medium">{m.pages > 0 ? m.pages : ''}</p>
-                      <div className="w-full flex flex-col justify-end" style={{ height: '80px' }}>
+                      <div className="flex flex-col justify-end w-full" style={{ height: '80px' }}>
                         <div
                           className={`w-full rounded-lg transition-all duration-500 ${isCurrentMonth ? 'bg-orange-400' : 'bg-stone-200'}`}
                           style={{ height: `${height}%` }}
@@ -313,7 +314,7 @@ function Stats() {
                     }}
                     className="w-7 h-7 rounded-full bg-stone-100 hover:bg-stone-200 flex items-center justify-center text-stone-500 text-xs transition-colors"
                   >←</button>
-                  <span className="text-stone-600 text-xs font-semibold w-24 text-center capitalize">
+                  <span className="text-xs font-semibold text-center uppercase truncate w-24 text-stone-600">
                     {new Date(calendarYear, calendarMonth).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
                   </span>
                   <button
@@ -362,7 +363,7 @@ function Stats() {
               {(() => {
                 const activeGenres = [...new Set(sessions.map(s => s.books?.genre).filter(Boolean))]
                 return activeGenres.length > 0 ? (
-                  <div className="flex items-center gap-2 mt-3 flex-wrap">
+                  <div className="flex flex-wrap items-center gap-2 mt-3">
                     {activeGenres.map(gv => {
                       const g = getGenreStyle(gv)
                       return (
@@ -380,33 +381,8 @@ function Stats() {
         )}
       </div>
 
-      {/* Navbar flotante — Feed / Registro / Stats (activo) / Biblioteca */}
-      <div
-        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 px-3 py-2 rounded-full border border-white/40"
-        style={{
-          background: 'rgba(255,255,255,0.55)',
-          backdropFilter: 'blur(24px) saturate(2)',
-          WebkitBackdropFilter: 'blur(24px) saturate(2)',
-          boxShadow: '0 4px 24px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.8)',
-          width: '85%', maxWidth: '360px',
-        }}
-      >
-        {[
-          { label: 'Inicio', path: '/feed', icon: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/><path d="M9 21V12h6v9"/></svg> },
-          { label: 'Registro', path: '/home', icon: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 016.5 2z"/></svg> },
-          { label: 'Stats', path: '/stats', active: true, icon: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
-          { label: 'Biblioteca', path: '/biblioteca', icon: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 016.5 2z"/></svg> },
-        ].map(item => (
-          <button
-            key={item.path}
-            onClick={() => navigate(item.path)}
-            className={`flex-1 py-2 flex flex-col items-center gap-1 rounded-full transition-all ${item.active ? 'text-orange-500' : 'text-stone-400 hover:text-stone-700'}`}
-          >
-            {item.icon()}
-            <span className="text-[9px] font-semibold tracking-tight">{item.label}</span>
-          </button>
-        ))}
-      </div>
+      {/* AÑADIDO: Inclusión de la Navbar global al final de la página */}
+      <Navbar active="/stats" />
 
     </div>
   )

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { getGenreStyle } from '../constants/genres'
+import Navbar from '../components/layout/Navbar' //  AÑADIDO: Importación del componente global
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -540,7 +541,7 @@ function Biblioteca() {
           <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm">
             <div className="flex items-center justify-between mb-2.5">
               <p className="text-xs font-black text-stone-500 uppercase tracking-wider">Tu progreso</p>
-              <p className="text-xs font-semibold text-stone-400">{books.length} libro{books.length !== 1 ? 's' : ''} terminado{books.length !== 1 ? 's' : ''}</p>
+              <p className="text-xs font-semibold text-stone-400">{books.length} libro${books.length !== 1 ? 's' : ''} terminado${books.length !== 1 ? 's' : ''}</p>
             </div>
             {/* Hitos de progreso */}
             {(() => {
@@ -645,33 +646,9 @@ function Biblioteca() {
         />
       )}
 
-      {/* Navbar flotante */}
-      <div
-        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 px-3 py-2 rounded-full border border-white/40"
-        style={{
-          background: 'rgba(255,255,255,0.55)',
-          backdropFilter: 'blur(24px) saturate(2)',
-          WebkitBackdropFilter: 'blur(24px) saturate(2)',
-          boxShadow: '0 4px 24px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.8)',
-          width: '85%', maxWidth: '360px',
-        }}
-      >
-        {[
-          { label: 'Inicio', path: '/feed', icon: (active) => <svg width="20" height="20" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/><path d="M9 21V12h6v9"/></svg> },
-          { label: 'Registro', path: '/home', icon: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 016.5 2z"/></svg> },
-          { label: 'Stats', path: '/stats', icon: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
-          { label: 'Biblioteca', path: '/biblioteca', active: true, icon: (active) => <svg width="20" height="20" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 016.5 2z"/></svg> },
-        ].map(item => (
-          <button
-            key={item.path}
-            onClick={() => navigate(item.path)}
-            className={`flex-1 py-2 flex flex-col items-center gap-1 rounded-full transition-all ${item.active ? 'text-orange-500' : 'text-stone-400 hover:text-stone-700'}`}
-          >
-            {item.icon(item.active)}
-            <span className="text-[9px] font-semibold tracking-tight">{item.label}</span>
-          </button>
-        ))}
-      </div>
+      {/* AÑADIDO: Inclusión de la Navbar global al final de la página */}
+      <Navbar active="/biblioteca" />
+
     </div>
   )
 }

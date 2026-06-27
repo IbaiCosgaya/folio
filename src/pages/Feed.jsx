@@ -2,10 +2,11 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { getGenreStyle } from '../constants/genres'
+import Navbar from '../components/layout/Navbar' 
+import { ADMIN_ID } from '../constants/config'
 
-const ADMIN_ID = '581dd0d6-6240-461a-90b7-224f74d577ab'
 
-// Aplana una fila de reading_sessions (con user_books -> global_books anidados)
+// Aplana una fila de reading_sessions (con user_books -> global_books aninados)
 // al shape "session.books.X" que ya usaba todo el JSX original, para minimizar cambios.
 function flattenSession(s) {
   const ub = s.user_books || {}
@@ -371,7 +372,7 @@ function Feed() {
 
       <div className="px-5 pb-4">
         <p className="text-[22px] font-bold text-stone-900 tracking-tight">Hola, {myProfile?.username || 'lector'} 👋</p>
-        <p className="text-stone-400 text-[13px] mt-0.5 italic">Manten pulsada la portada para inspeccionar</p>
+        <p className="text-stone-400 text-[13px] mt-0.5 italic">Manten pulsada the portada para inspeccionar</p>
       </div>
 
       {/* Buscador */}
@@ -672,21 +673,9 @@ function Feed() {
           </div>
         </div>
       )}
-
-      {/* Navbar flotante */}
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 px-3 py-2 rounded-full border border-white/40" style={{ background: 'rgba(255, 255, 255, 0.45)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)', width: '85%', maxWidth: '360px' }}>
-        {[
-          { label: 'Inicio', path: '/feed', active: true, icon: (active) => <svg width="20" height="20" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/><path d="M9 21V12h6v9"/></svg> },
-          { label: 'Registro', path: '/home', active: false, icon: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 016.5 2z"/></svg> },
-          { label: 'Stats', path: '/stats', active: false, icon: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
-          { label: 'Biblioteca', path: '/biblioteca', active: false, icon: (active) => <svg width="20" height="20" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 016.5 2z"/></svg> },
-        ].map(item => (
-          <button key={item.path} onClick={() => navigate(item.path)} className={`flex-1 py-2 flex flex-col items-center gap-1 rounded-full ${item.active ? 'text-orange-500' : 'text-stone-400'}`}>
-            {item.icon(item.active)}
-            <span className="text-[9px] font-semibold">{item.label}</span>
-          </button>
-        ))}
-      </div>
+      
+      {/* AÑADIDO: Inclusión de la Navbar global al final de la página */}
+      <Navbar active="/feed" />
 
     </div>
   )
