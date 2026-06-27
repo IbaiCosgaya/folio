@@ -170,7 +170,7 @@ function Home() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {user?.id === '581dd0d6-6240-461a-90b7-224f74d577ab' && (
+          {user?.id === ADMIN_ID && (
             <button onClick={() => navigate('/admin')} className="relative text-[11px] text-stone-400 tracking-widest uppercase font-semibold">
               admin
               {pendingCount > 0 && (
