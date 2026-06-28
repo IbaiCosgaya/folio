@@ -1,13 +1,11 @@
+// src/pages/Feed.jsx
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { getGenreStyle } from '../constants/genres'
-import Navbar from '../components/layout/Navbar' 
+import Navbar from '../components/layout/Navbar'
 import { ADMIN_ID } from '../constants/config'
 
-
-// Aplana una fila de reading_sessions (con user_books -> global_books aninados)
-// al shape "session.books.X" que ya usaba todo el JSX original, para minimizar cambios.
 function flattenSession(s) {
   const ub = s.user_books || {}
   const gb = ub.global_books || {}
@@ -19,7 +17,7 @@ function flattenSession(s) {
     minutes_read: s.minutes_read,
     profiles: null,
     books: {
-      book_id: ub.book_id, // id de global_books, lo necesitamos para "+ Mi lista"
+      book_id: ub.book_id,
       title: gb.title,
       author: gb.author,
       cover_url: gb.cover_url,
@@ -33,6 +31,167 @@ function flattenSession(s) {
   }
 }
 
+function timeAgo(date) {
+  const diff = Math.floor((new Date() - new Date(date)) / 1000)
+  if (diff < 60) return 'ahora mismo'
+  if (diff < 3600) return `hace ${Math.floor(diff / 60)}m`
+  if (diff < 86400) return `hace ${Math.floor(diff / 3600)}h`
+  return `hace ${Math.floor(diff / 86400)}d`
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Long-press panel sub-components
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Skeleton shelf — ready for real data in Fase 4.
+// Replace the inner div with actual book cards when the recommender is built.
+function ComingSoonShelf({ label, tag }) {
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-3">
+        <h4 className="text-xs font-bold uppercase text-stone-400 tracking-wider">{label}</h4>
+        <span className="text-[9px] bg-blue-50 text-blue-500 font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">
+          {tag}
+        </span>
+      </div>
+      {/* TODO Fase 4: replace these skeletons with real book cards from the recommender */}
+      <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
+        {[1, 2, 3].map(i => (
+          <div key={i} className="min-w-[88px] flex-shrink-0">
+            <div className="w-[88px] h-[120px] bg-stone-100 rounded-xl mb-2 animate-pulse" />
+            <div className="h-2 bg-stone-100 rounded-full w-3/4 mb-1 animate-pulse" />
+            <div className="h-2 bg-stone-100 rounded-full w-1/2 animate-pulse" />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// More books by same author — real query to global_books
+function AuthorShelf({ author, currentBookId }) {
+  const [books, setBooks] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!author) return
+    supabase
+      .from('global_books')
+      .select('id, title, cover_url, genre')
+      .ilike('author', author)
+      .neq('id', currentBookId)
+      .limit(6)
+      .then(({ data }) => {
+        setBooks(data || [])
+        setLoading(false)
+      })
+  }, [author, currentBookId])
+
+  if (!loading && books.length === 0) return null
+
+  return (
+    <div>
+      <h4 className="text-xs font-bold uppercase text-stone-400 tracking-wider mb-3">
+        Más de {author}
+      </h4>
+      <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
+        {loading
+          ? [1, 2, 3].map(i => (
+              <div key={i} className="min-w-[88px] flex-shrink-0">
+                <div className="w-[88px] h-[120px] bg-stone-100 rounded-xl animate-pulse" />
+              </div>
+            ))
+          : books.map(book => {
+              const g = getGenreStyle(book.genre)
+              const Icon = g.icon
+              return (
+                <div key={book.id} className="min-w-[88px] flex-shrink-0">
+                  <div className="w-[88px] h-[120px] rounded-xl overflow-hidden mb-2 shadow-sm">
+                    {book.cover_url ? (
+                      <img src={book.cover_url} alt={book.title}
+                        className="w-full h-full object-cover" loading="lazy" />
+                    ) : (
+                      <div className={`w-full h-full flex items-center justify-center ${g.badge}`}>
+                        <Icon size={22} strokeWidth={1.6} />
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-[10px] font-bold text-stone-700 leading-tight line-clamp-2">
+                    {book.title}
+                  </p>
+                </div>
+              )
+            })
+        }
+      </div>
+    </div>
+  )
+}
+
+// Friends who also finished this book — real query, correctly filtered by follows
+function FriendsWhoRead({ bookId, currentUserId }) {
+  const [friends, setFriends] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!bookId || !currentUserId) return
+
+    async function load() {
+      // Step 1: get IDs of people the current user follows
+      const { data: followData } = await supabase
+        .from('follows')
+        .select('following_id')
+        .eq('follower_id', currentUserId)
+
+      const followingIds = (followData || []).map(f => f.following_id)
+      if (followingIds.length === 0) { setLoading(false); return }
+
+      // Step 2: among those, find who finished this specific book
+      const { data } = await supabase
+        .from('user_books')
+        .select('user_id, profiles(username)')
+        .eq('book_id', bookId)
+        .eq('finished', true)
+        .in('user_id', followingIds)
+        .neq('user_id', currentUserId)
+
+      setFriends(
+        (data || [])
+          .map(f => ({ id: f.user_id, username: f.profiles?.username }))
+          .filter(f => f.username)
+      )
+      setLoading(false)
+    }
+
+    load()
+  }, [bookId, currentUserId])
+
+  if (loading || friends.length === 0) return null
+
+  return (
+    <div>
+      <h4 className="text-xs font-bold uppercase text-stone-400 tracking-wider mb-3">
+        También lo leyeron
+      </h4>
+      <div className="flex flex-wrap gap-2">
+        {friends.map(f => (
+          <div key={f.id}
+            className="flex items-center gap-2 bg-stone-50 border border-stone-100 rounded-full pl-1 pr-3 py-1">
+            <div className="w-6 h-6 rounded-full bg-orange-100 flex items-center justify-center text-[10px] font-bold text-orange-600 flex-shrink-0">
+              {f.username[0].toUpperCase()}
+            </div>
+            <span className="text-xs font-semibold text-stone-700">{f.username}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main Feed component
+// ─────────────────────────────────────────────────────────────────────────────
+
 function Feed() {
   const [sessions, setSessions] = useState([])
   const [loading, setLoading] = useState(true)
@@ -44,12 +203,9 @@ function Feed() {
   const [likes, setLikes] = useState({})
   const [toast, setToast] = useState(null)
   const [pendingCount, setPendingCount] = useState(0)
-
-  // ESTADOS LONG TOUCH & DETALLES
   const [selectedSession, setSelectedSession] = useState(null)
   const [isClosing, setIsClosing] = useState(false)
   const longPressTimer = useRef(null)
-
   const navigate = useNavigate()
 
   useEffect(() => { fetchFeed() }, [])
@@ -103,9 +259,7 @@ function Feed() {
         setSessions(flatSessions.map(s => ({ ...s, profiles: profilesMap[s.user_id] || null })))
 
         const sessionIds = flatSessions.map(s => s.id)
-        if (sessionIds.length > 0) {
-          await fetchLikes(sessionIds, user?.id)
-        }
+        if (sessionIds.length > 0) await fetchLikes(sessionIds, user?.id)
       }
     } catch (err) {
       console.error(err)
@@ -116,13 +270,10 @@ function Feed() {
 
   async function fetchLikes(sessionIds, currentUserId) {
     const { data } = await supabase
-      .from('likes')
-      .select('session_id, user_id')
-      .in('session_id', sessionIds)
+      .from('likes').select('session_id, user_id').in('session_id', sessionIds)
 
     const likesMap = {}
     sessionIds.forEach(id => { likesMap[id] = { count: 0, liked: false } })
-
     if (data) {
       data.forEach(like => {
         if (!likesMap[like.session_id]) likesMap[like.session_id] = { count: 0, liked: false }
@@ -136,15 +287,13 @@ function Feed() {
   async function handleLike(sessionId) {
     if (!user) return
     const isLiked = likes[sessionId]?.liked
-
     setLikes(prev => ({
       ...prev,
       [sessionId]: {
         count: (prev[sessionId]?.count || 0) + (isLiked ? -1 : 1),
-        liked: !isLiked
-      }
+        liked: !isLiked,
+      },
     }))
-
     if (isLiked) {
       await supabase.from('likes').delete().eq('user_id', user.id).eq('session_id', sessionId)
     } else {
@@ -152,41 +301,27 @@ function Feed() {
     }
   }
 
-  // Añade el libro de una sesión ajena a tu propia estantería, evitando duplicados
-  // y reactivando la fila si ya la tenías desactivada (la habías quitado antes).
   async function handleAddToList(session) {
     if (!user) return
     const bookId = session.books?.book_id
     if (!bookId) return
 
     const { data: existing } = await supabase
-      .from('user_books')
-      .select('id, is_active')
-      .eq('user_id', user.id)
-      .eq('book_id', bookId)
-      .maybeSingle()
+      .from('user_books').select('id, is_active')
+      .eq('user_id', user.id).eq('book_id', bookId).maybeSingle()
 
     if (existing) {
-      if (existing.is_active) {
-        showToast('Ya tienes este libro en tu lista')
-        return
-      }
-      await supabase
-        .from('user_books')
-        .update({ is_active: true, current_page: 0, finished: false })
-        .eq('id', existing.id)
+      if (existing.is_active) { showToast('Ya tienes este libro en tu lista'); return }
+      await supabase.from('user_books')
+        .update({ is_active: true, current_page: 0, finished: false }).eq('id', existing.id)
       showToast(`"${session.books.title}" añadido a tu lista`)
       return
     }
 
     const { error } = await supabase.from('user_books').insert({
-      user_id: user.id,
-      book_id: bookId,
-      current_page: 0,
-      finished: false,
-      is_active: true,
+      user_id: user.id, book_id: bookId,
+      current_page: 0, finished: false, is_active: true,
     })
-
     if (!error) showToast(`"${session.books.title}" añadido a tu lista`)
   }
 
@@ -195,30 +330,20 @@ function Feed() {
     if (q.length < 2) { setSearchResults([]); return }
     setSearching(true)
     try {
-      const { data: { user: currentUser } } = await supabase.auth.getUser()
-      if (currentUser) {
+      // Reuse already-fetched user from state instead of calling getUser() again
+      if (user) {
         const { data } = await supabase
-          .from('profiles').select('*').ilike('username', `%${q}%`).neq('id', currentUser.id).limit(5)
+          .from('profiles').select('*')
+          .ilike('username', `%${q}%`).neq('id', user.id).limit(5)
         if (data) setSearchResults(data)
       }
     } catch (e) { console.error(e) }
     setSearching(false)
   }
 
-  function timeAgo(date) {
-    const diff = Math.floor((new Date() - new Date(date)) / 1000)
-    if (diff < 60) return 'ahora mismo'
-    if (diff < 3600) return `hace ${Math.floor(diff / 60)}m`
-    if (diff < 86400) return `hace ${Math.floor(diff / 3600)}h`
-    return `hace ${Math.floor(diff / 86400)}d`
-  }
-
-  // --- CONTROL GESTOS TACTILES ---
   const handleTouchStart = (session) => {
     if (selectedSession) return
-    longPressTimer.current = setTimeout(() => {
-      setSelectedSession(session)
-    }, 450)
+    longPressTimer.current = setTimeout(() => setSelectedSession(session), 450)
   }
 
   const handleTouchEnd = () => {
@@ -227,10 +352,7 @@ function Feed() {
 
   const closeDetails = () => {
     setIsClosing(true)
-    setTimeout(() => {
-      setSelectedSession(null)
-      setIsClosing(false)
-    }, 400)
+    setTimeout(() => { setSelectedSession(null); setIsClosing(false) }, 400)
   }
 
   if (loading) return (
@@ -240,12 +362,13 @@ function Feed() {
   )
 
   return (
-    <div className="min-h-screen bg-[#f8f6f2] pb-36 antialiased select-none" style={{ fontFamily: "'Inter', -apple-system, sans-serif" }}>
+    <div className="min-h-screen bg-[#f8f6f2] pb-36 antialiased select-none"
+      style={{ fontFamily: "'Inter', -apple-system, sans-serif" }}>
 
       <style>{`
         @keyframes cardEntrance {
           from { opacity: 0; transform: translateY(24px) scale(0.97); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
+          to   { opacity: 1; transform: translateY(0) scale(1); }
         }
         .feed-card-native {
           animation: cardEntrance 0.55s cubic-bezier(0.215, 0.610, 0.355, 1) both;
@@ -253,90 +376,78 @@ function Feed() {
         }
 
         .book-flat-container {
-          position: relative;
-          width: 135px;
-          height: 195px;
-          perspective: 1000px;
-          transform-style: preserve-3d;
-          transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-          cursor: pointer;
+          position: relative; width: 135px; height: 195px;
+          perspective: 1000px; transform-style: preserve-3d;
+          transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1); cursor: pointer;
         }
         .book-flat-container:active {
           transform: scale(1.08) rotateY(-18deg) rotateZ(-2deg);
         }
-
         .book-flat-cover {
           width: 100%; height: 100%; object-fit: cover;
           border-radius: 4px 6px 6px 4px;
-          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14), inset 1px 0 3px rgba(255,255,255,0.2);
+          box-shadow: 0 8px 24px rgba(0,0,0,0.14), inset 1px 0 3px rgba(255,255,255,0.2);
           transition: box-shadow 0.4s ease;
         }
         .book-flat-container:active .book-flat-cover {
-          box-shadow: 14px 20px 36px rgba(0, 0, 0, 0.3), 2px 4px 10px rgba(0, 0, 0, 0.15);
+          box-shadow: 14px 20px 36px rgba(0,0,0,0.3), 2px 4px 10px rgba(0,0,0,0.15);
         }
-
         .book-flat-spine-effect {
           position: absolute; top: 0; left: 0; bottom: 0; width: 5px;
           background: linear-gradient(to right, rgba(0,0,0,0.18) 0%, transparent 100%);
           border-radius: 4px 0 0 4px; pointer-events: none;
         }
 
-        /* FIX DE BLURS USANDO DEGRADADO MASK-IMAGE */
         .blur-header-mask {
-          position: fixed; top: 0; left: 0; right: 0; z-index: 35; h-28;
-          background: rgba(248,246,242, 0.85);
+          position: fixed; top: 0; left: 0; right: 0; z-index: 35; height: 96px;
+          background: rgba(248,246,242,0.85);
           backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
           mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
           -webkit-mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
           pointer-events: none;
         }
         .blur-footer-mask {
-          position: fixed; bottom: 0; left: 0; right: 0; z-index: 35; h-36;
-          background: rgba(248,246,242, 0.85);
+          position: fixed; bottom: 0; left: 0; right: 0; z-index: 35; height: 128px;
+          background: rgba(248,246,242,0.85);
           backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
           mask-image: linear-gradient(to top, black 55%, transparent 100%);
           -webkit-mask-image: linear-gradient(to top, black 55%, transparent 100%);
           pointer-events: none;
         }
 
-        /* ANIMACIONES EN MODO OSCURO (LONG PRESS) */
         @keyframes bIn {
-          from { opacity: 0; backdrop-filter: blur(0px); -webkit-backdrop-filter: blur(0px); }
-          to { opacity: 1; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+          from { opacity: 0; backdrop-filter: blur(0px); }
+          to   { opacity: 1; backdrop-filter: blur(20px); }
         }
         @keyframes bOut {
-          from { opacity: 1; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
-          to { opacity: 0; backdrop-filter: blur(0px); -webkit-backdrop-filter: blur(0px); }
+          from { opacity: 1; backdrop-filter: blur(20px); }
+          to   { opacity: 0; backdrop-filter: blur(0px); }
         }
-        .anim-bg-in { animation: bIn 0.4s ease forwards; }
+        .anim-bg-in  { animation: bIn  0.4s ease forwards; }
         .anim-bg-out { animation: bOut 0.4s ease forwards; }
 
         @keyframes bkOpen {
-          0% { transform: scale(0.75) rotateY(0deg); opacity: 0; }
-          100% { transform: scale(1) rotateY(-24deg) rotateX(6deg); opacity: 1; }
+          0%   { transform: scale(0.75) rotateY(0deg);           opacity: 0; }
+          100% { transform: scale(1)    rotateY(-24deg) rotateX(6deg); opacity: 1; }
         }
         @keyframes bkClose {
           from { transform: scale(1) rotateY(-24deg) rotateX(6deg); opacity: 1; }
-          to { transform: scale(0.6) rotateY(0deg); opacity: 0; }
+          to   { transform: scale(0.6) rotateY(0deg);              opacity: 0; }
         }
-        .anim-book-open { animation: bkOpen 0.48s cubic-bezier(0.19, 1, 0.22, 1) forwards; transform-style: preserve-3d; perspective: 1000px; }
+        .anim-book-open  { animation: bkOpen  0.48s cubic-bezier(0.19, 1, 0.22, 1) forwards; transform-style: preserve-3d; perspective: 1000px; }
         .anim-book-close { animation: bkClose 0.35s cubic-bezier(0.55, 0, 1, 0.45) forwards; }
 
-        @keyframes panelUp {
-          from { transform: translateY(100%); }
-          to { transform: translateY(0); }
-        }
-        @keyframes panelDown {
-          from { transform: translateY(0); }
-          to { transform: translateY(100%); }
-        }
-        .anim-panel-in { animation: panelUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        .anim-panel-out { animation: panelDown 0.35s cubic-bezier(0.55, 0, 1, 0.45) forwards; }
+        @keyframes panelUp   { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        @keyframes panelDown { from { transform: translateY(0); }    to { transform: translateY(100%); } }
+        .anim-panel-in  { animation: panelUp   0.5s  cubic-bezier(0.16, 1, 0.3, 1)      forwards; }
+        .anim-panel-out { animation: panelDown 0.35s cubic-bezier(0.55, 0, 1, 0.45)     forwards; }
+
+        .scrollbar-none::-webkit-scrollbar { display: none; }
+        .scrollbar-none { scrollbar-width: none; }
       `}</style>
 
-      {/* Máscaras de Desenfoque Corregidas sin saltos visuales */}
-      <div className="blur-header-mask h-24" />
-      <div className="blur-footer-mask h-32" />
+      <div className="blur-header-mask" />
+      <div className="blur-footer-mask" />
 
       {toast && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-stone-900 text-white text-sm font-semibold px-5 py-3 rounded-full shadow-lg">
@@ -357,7 +468,8 @@ function Feed() {
         </div>
         <div className="flex items-center gap-3">
           {user?.id === ADMIN_ID && (
-            <button onClick={() => navigate('/admin')} className="relative text-[11px] text-stone-400 tracking-widest uppercase font-semibold">
+            <button onClick={() => navigate('/admin')}
+              className="relative text-[11px] text-stone-400 tracking-widest uppercase font-semibold">
               admin
               {pendingCount > 0 && (
                 <span className="absolute -top-2 -right-3 bg-red-500 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
@@ -366,16 +478,24 @@ function Feed() {
               )}
             </button>
           )}
-          <button onClick={() => supabase.auth.signOut().then(() => navigate('/'))} className="w-7 h-7 rounded-full bg-stone-200/60 flex items-center justify-center text-stone-500 text-[10px]">✕</button>
+          <button
+            onClick={() => supabase.auth.signOut().then(() => navigate('/'))}
+            className="w-7 h-7 rounded-full bg-stone-200/60 flex items-center justify-center text-stone-500 text-[10px]">
+            ✕
+          </button>
         </div>
       </div>
 
       <div className="px-5 pb-4">
-        <p className="text-[22px] font-bold text-stone-900 tracking-tight">Hola, {myProfile?.username || 'lector'} 👋</p>
-        <p className="text-stone-400 text-[13px] mt-0.5 italic">Manten pulsada the portada para inspeccionar</p>
+        <p className="text-[22px] font-bold text-stone-900 tracking-tight">
+          Hola, {myProfile?.username || 'lector'} 👋
+        </p>
+        <p className="text-stone-400 text-[13px] mt-0.5 italic">
+          Mantén pulsada la portada para explorar
+        </p>
       </div>
 
-      {/* Buscador */}
+      {/* Search */}
       <div className="px-5 mb-6 relative z-30">
         <input
           type="text"
@@ -384,20 +504,17 @@ function Feed() {
           onChange={e => handleSearch(e.target.value)}
           className="w-full bg-white/80 text-stone-800 placeholder-stone-400 rounded-2xl px-4 py-3 text-sm outline-none border border-stone-200/60"
         />
-
         {searchQuery.length >= 2 && (
-          <div className="absolute left-0 right-0 mt-2 bg-white rounded-2xl border border-stone-200/60 shadow-lg overflow-hidden z-40">
+          <div className="absolute left-0 right-0 mt-2 bg-white rounded-2xl border border-stone-200/60 shadow-lg overflow-hidden z-40" style={{ left: '20px', right: '20px' }}>
             {searching ? (
               <p className="px-4 py-3 text-sm text-stone-400">Buscando...</p>
             ) : searchResults.length === 0 ? (
               <p className="px-4 py-3 text-sm text-stone-400">Sin resultados</p>
             ) : (
               searchResults.map(p => (
-                <div
-                  key={p.id}
+                <div key={p.id}
                   onClick={() => { navigate(`/user/${p.id}`); setSearchQuery(''); setSearchResults([]) }}
-                  className="flex items-center gap-3 px-4 py-3 hover:bg-stone-50 cursor-pointer border-b border-stone-100 last:border-0"
-                >
+                  className="flex items-center gap-3 px-4 py-3 hover:bg-stone-50 cursor-pointer border-b border-stone-100 last:border-0">
                   <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-xs font-bold text-orange-600">
                     {p.username?.[0]?.toUpperCase() || '?'}
                   </div>
@@ -409,7 +526,7 @@ function Feed() {
         )}
       </div>
 
-      {/* Feed principal */}
+      {/* Feed cards */}
       <div className="space-y-8 max-w-md mx-auto">
         {sessions.length === 0 ? (
           <div className="mx-5 bg-white rounded-3xl p-12 text-center border border-stone-200/40">
@@ -418,37 +535,42 @@ function Feed() {
         ) : (
           sessions.map((session, index) => {
             const currentGenre = getGenreStyle(session.books?.genre)
+            // FIX: cap animation delay at 4 cards — beyond that, instant appearance
+            const animDelay = `${Math.min(index, 3) * 0.06}s`
 
             return (
               <div
                 key={session.id}
                 className="feed-card-native mx-5 bg-white rounded-[2.5rem] overflow-hidden border border-stone-100 shadow-md flex flex-col justify-between"
-                style={{ minHeight: '82vh', animationDelay: `${index * 0.06}s` }}
+                style={{ minHeight: '82vh', animationDelay: animDelay }}
               >
-                {/* Render multimedia superior */}
-                <div className="relative w-full overflow-hidden flex-1 flex items-center justify-center" style={{ minHeight: '52vh' }}>
+                {/* Cover area */}
+                <div className="relative w-full overflow-hidden flex-1 flex items-center justify-center"
+                  style={{ minHeight: '52vh' }}>
                   {session.books?.cover_url ? (
-                    <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${session.books.cover_url})`, filter: 'blur(30px) brightness(0.65)', transform: 'scale(1.25)' }} />
+                    <div className="absolute inset-0 bg-cover bg-center"
+                      style={{ backgroundImage: `url(${session.books.cover_url})`, filter: 'blur(30px) brightness(0.65)', transform: 'scale(1.25)' }} />
                   ) : (
                     <div className={`absolute inset-0 ${currentGenre.badge} opacity-40`} />
                   )}
 
-                  <div
-                    className="absolute top-6 left-6 z-30 flex items-center gap-3 cursor-pointer"
-                    onClick={() => navigate(session.user_id === user?.id ? '/profile' : `/user/${session.user_id}`)}
-                  >
+                  <div className="absolute top-6 left-6 z-30 flex items-center gap-3 cursor-pointer"
+                    onClick={() => navigate(session.user_id === user?.id ? '/profile' : `/user/${session.user_id}`)}>
                     <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-sm font-bold text-white border border-white/30">
                       {session.profiles?.username?.[0]?.toUpperCase() || '?'}
                     </div>
                     <div>
-                      <p className="text-[15px] font-bold text-white leading-tight drop-shadow-md">{session.profiles?.username || 'Usuario'}</p>
-                      <p className="text-white/75 text-[11px] font-medium mt-0.5">{timeAgo(session.created_at)}</p>
+                      <p className="text-[15px] font-bold text-white leading-tight drop-shadow-md">
+                        {session.profiles?.username || 'Usuario'}
+                      </p>
+                      <p className="text-white/75 text-[11px] font-medium mt-0.5">
+                        {timeAgo(session.created_at)}
+                      </p>
                     </div>
                   </div>
 
-                  {/* Libro de la Tarjeta */}
                   <div className="relative z-10 w-full h-full max-h-[42vh] px-10 py-4 flex items-center justify-center">
-                    <div 
+                    <div
                       className="book-flat-container"
                       onTouchStart={() => handleTouchStart(session)}
                       onTouchEnd={handleTouchEnd}
@@ -457,68 +579,81 @@ function Feed() {
                       onMouseLeave={handleTouchEnd}
                     >
                       {session.books?.cover_url ? (
-                        <img src={session.books.cover_url} alt={session.books.title} className="book-flat-cover" loading="lazy" />
+                        <img src={session.books.cover_url} alt={session.books.title}
+                          className="book-flat-cover" loading="lazy" />
                       ) : (
                         <div className={`book-flat-cover ${currentGenre.badge} flex flex-col items-center justify-center p-4 text-center`}>
                           <currentGenre.icon size={32} strokeWidth={1.6} className="mb-2" />
-                          <p className="text-[11px] font-black uppercase tracking-wider line-clamp-4">{session.books?.title}</p>
+                          <p className="text-[11px] font-black uppercase tracking-wider line-clamp-4">
+                            {session.books?.title}
+                          </p>
                         </div>
                       )}
                       <div className="book-flat-spine-effect" />
                     </div>
                   </div>
-                  <div className="absolute bottom-0 left-0 right-0 z-20 h-32" style={{ background: 'linear-gradient(to top, #ffffff 0%, rgba(255,255,255,0.5) 40%, transparent 100%)' }} />
+
+                  <div className="absolute bottom-0 left-0 right-0 z-20 h-32"
+                    style={{ background: 'linear-gradient(to top, #ffffff 0%, rgba(255,255,255,0.5) 40%, transparent 100%)' }} />
                 </div>
 
-                {/* Bloque Completo de Información en Tarjeta */}
+                {/* Info area */}
                 <div className="px-6 pb-7 bg-white relative z-30">
                   <span className="text-[10px] font-bold tracking-widest uppercase bg-stone-100 text-stone-500 px-2.5 py-1 rounded-md">
                     {(session.books?.genre || 'otro').replace('_', ' ')}
                   </span>
 
-                  <h3 className="text-xl font-black text-stone-900 tracking-tight mt-2">{session.books?.title}</h3>
+                  <h3 className="text-xl font-black text-stone-900 tracking-tight mt-2">
+                    {session.books?.title}
+                  </h3>
                   <p className="text-stone-400 text-sm mt-0.5 font-medium">
                     {session.books?.author}
-                    {session.books?.year && <span className="text-stone-300 font-normal"> · {session.books.year}</span>}
+                    {session.books?.year && (
+                      <span className="text-stone-300 font-normal"> · {session.books.year}</span>
+                    )}
                   </p>
 
-                  {/* Progreso de la sesión */}
                   {session.books?.finished ? (
                     <div className="mt-4 bg-gradient-to-r from-amber-50 to-orange-50 border border-orange-100 rounded-2xl px-4 py-3 text-center">
                       <p className="text-sm font-black text-stone-900">🎉 ¡Libro Completado!</p>
                     </div>
-                  ) : (
-                    session.books?.total_pages > 0 && (
-                      <div className="mt-4">
-                        <div className="flex justify-between text-[11px] text-stone-400 mb-1">
-                          <span>Progreso Global</span>
-                          <span className="font-bold text-orange-500">{Math.round((session.books.current_page / session.books.total_pages) * 100)}%</span>
-                        </div>
-                        <div className="w-full bg-stone-100 rounded-full h-2 relative flex items-center mt-3">
-                          <div
-                            className={`h-2 rounded-full transition-all duration-500 ${currentGenre.solid}`}
-                            style={{ width: `${Math.max((session.books.current_page / session.books.total_pages) * 100, 2)}%` }}
-                          />
-                          <div
-                            className={`absolute flex items-center justify-center w-6 h-6 rounded-full shadow-md ring-2 ring-white transition-all duration-500 z-10 ${currentGenre.solid}`}
-                            style={{
-                              left: `calc(${Math.min((session.books.current_page / session.books.total_pages) * 100, 94)}% - 12px)`,
-                              top: '-8px'
-                            }}
-                          >
-                            {(() => { const Icon = currentGenre.icon; return <Icon size={13} strokeWidth={2.75} className="text-white" /> })()}
-                          </div>
+                  ) : session.books?.total_pages > 0 && (
+                    <div className="mt-4">
+                      <div className="flex justify-between text-[11px] text-stone-400 mb-1">
+                        <span>Progreso Global</span>
+                        <span className="font-bold text-orange-500">
+                          {Math.round((session.books.current_page / session.books.total_pages) * 100)}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-stone-100 rounded-full h-2 relative flex items-center mt-3">
+                        <div
+                          className={`h-2 rounded-full transition-all duration-500 ${currentGenre.solid}`}
+                          style={{ width: `${Math.max((session.books.current_page / session.books.total_pages) * 100, 2)}%` }}
+                        />
+                        <div
+                          className={`absolute flex items-center justify-center w-6 h-6 rounded-full shadow-md ring-2 ring-white transition-all duration-500 z-10 ${currentGenre.solid}`}
+                          style={{
+                            left: `calc(${Math.min((session.books.current_page / session.books.total_pages) * 100, 94)}% - 12px)`,
+                            top: '-8px',
+                          }}
+                        >
+                          {(() => { const Icon = currentGenre.icon; return <Icon size={13} strokeWidth={2.75} className="text-white" /> })()}
                         </div>
                       </div>
-                    )
+                    </div>
                   )}
 
                   <div className="flex flex-wrap gap-2 mt-4">
-                    <span className="text-xs font-bold px-3 py-1.5 bg-orange-50 text-orange-600 rounded-full border border-orange-100">📖 {session.pages_read} pág. hoy</span>
-                    {session.minutes_read && <span className="text-xs font-bold px-3 py-1.5 bg-stone-50 text-stone-500 rounded-full border border-stone-200">⏱ {session.minutes_read} min</span>}
+                    <span className="text-xs font-bold px-3 py-1.5 bg-orange-50 text-orange-600 rounded-full border border-orange-100">
+                      📖 {session.pages_read} pág. hoy
+                    </span>
+                    {session.minutes_read && (
+                      <span className="text-xs font-bold px-3 py-1.5 bg-stone-50 text-stone-500 rounded-full border border-stone-200">
+                        ⏱ {session.minutes_read} min
+                      </span>
+                    )}
                   </div>
 
-                  {/* Botones de acción inferiores */}
                   <div className="flex items-center gap-2 mt-4 pt-4 border-t border-stone-100">
                     <button
                       onClick={() => session.user_id !== user?.id && handleLike(session.id)}
@@ -534,7 +669,9 @@ function Feed() {
                       ❤ <span>{likes[session.id]?.count || 0}</span>
                     </button>
                     {session.user_id !== user?.id && (
-                      <button onClick={() => handleAddToList(session)} className="text-xs font-bold px-4 py-2 bg-stone-50 text-stone-500 rounded-full border border-stone-100">
+                      <button
+                        onClick={() => handleAddToList(session)}
+                        className="text-xs font-bold px-4 py-2 bg-stone-50 text-stone-500 rounded-full border border-stone-100">
                         + Mi lista
                       </button>
                     )}
@@ -546,137 +683,119 @@ function Feed() {
         )}
       </div>
 
-      {/* --- MODO DETALLE EN OSCURO: CON CONTENIDO EXPANDIBLE DE RECOMENDACIÓN --- */}
+      {/* ── Long-press detail overlay ── */}
       {selectedSession && (
-        <div 
-          className={`fixed inset-0 z-50 flex flex-col justify-end bg-stone-950/85 transition-all ${isClosing ? 'anim-bg-out' : 'anim-bg-in'}`}
+        <div
+          className={`fixed inset-0 z-50 flex flex-col justify-end bg-stone-950/85 ${isClosing ? 'anim-bg-out' : 'anim-bg-in'}`}
           style={{ backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}
         >
-          {/* Libro flotante en la mitad superior */}
+          {/* Floating book */}
           <div className="flex-1 flex flex-col items-center justify-center px-6 relative">
-            <button 
-              onClick={closeDetails} 
-              className="absolute top-6 right-6 w-10 h-10 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-white text-base hover:bg-white/20 active:scale-90 transition-transform"
+            <button
+              onClick={closeDetails}
+              className="absolute top-6 right-6 w-10 h-10 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-white text-base active:scale-90 transition-transform"
             >
               ✕
             </button>
-            
-            <div 
-              className={`w-[145px] h-[210px] ${isClosing ? 'anim-book-close' : 'anim-book-open'}`}
-              style={{ boxShadow: '0 35px 65px rgba(0,0,0,0.65), 5px 15px 25px rgba(0,0,0,0.4)' }}
+            <div className={`w-[145px] h-[210px] ${isClosing ? 'anim-book-close' : 'anim-book-open'}`}
+              style={{
+                boxShadow: '0 35px 65px rgba(0,0,0,0.65), 5px 15px 25px rgba(0,0,0,0.4)',
+                borderRadius: '4px 8px 8px 4px', overflow: 'hidden',
+              }}
             >
               {selectedSession.books?.cover_url ? (
-                <img src={selectedSession.books.cover_url} alt="" className="w-full h-full object-cover rounded-r-md rounded-l-sm" />
+                <img src={selectedSession.books.cover_url} alt=""
+                  className="w-full h-full object-cover" />
               ) : (
-                <div className="w-full h-full bg-stone-800 flex items-center justify-center rounded-r-md"><span className="text-3xl">📖</span></div>
+                <div className="w-full h-full bg-stone-800 flex items-center justify-center">
+                  <span className="text-3xl">📖</span>
+                </div>
               )}
-              <div className="absolute top-0 left-0 bottom-0 w-5 bg-gradient-to-r from-black/40 to-transparent pointer-events-none" />
             </div>
           </div>
 
-          {/* PANEL INFERIOR INTEGRADO: Limitado al tamaño simétrico de tus tarjetas de feed (max-w-md mx-auto) */}
-          <div 
-            className={`w-full max-w-md mx-auto bg-white rounded-t-[2.5rem] md:rounded-b-[2.5rem] md:mb-6 shadow-2xl flex flex-col overflow-hidden ${
-              isClosing ? 'anim-panel-out' : 'anim-panel-in'
-            }`}
+          {/* Bottom panel */}
+          <div
+            className={`w-full max-w-md mx-auto bg-white rounded-t-[2.5rem] shadow-2xl flex flex-col overflow-hidden ${isClosing ? 'anim-panel-out' : 'anim-panel-in'}`}
             style={{ maxHeight: '62vh', minHeight: '55vh' }}
           >
-            {/* Cabecera fija interna */}
-            <div className="px-6 pt-6 pb-3 border-b border-stone-100 flex items-center justify-between flex-shrink-0">
-              <div>
+            {/* Panel header */}
+            <div className="px-6 pt-6 pb-3 border-b border-stone-100 flex items-start justify-between flex-shrink-0">
+              <div className="flex-1 min-w-0 pr-3">
                 <span className="text-[9px] font-black tracking-widest uppercase bg-orange-100 text-orange-600 px-2 py-0.5 rounded">
                   {selectedSession.books?.genre || 'General'}
                 </span>
-                <h2 className="text-xl font-black text-stone-900 tracking-tight mt-1 truncate max-w-[220px]">
+                <h2 className="text-xl font-black text-stone-900 tracking-tight mt-1 truncate">
                   {selectedSession.books?.title}
                 </h2>
+                <p className="text-stone-400 text-xs font-medium mt-0.5">
+                  {selectedSession.books?.author}
+                </p>
               </div>
-              <button onClick={closeDetails} className="text-xs font-bold text-stone-400 bg-stone-100 px-3 py-1.5 rounded-full hover:bg-stone-200 transition-colors">
+              <button
+                onClick={closeDetails}
+                className="text-xs font-bold text-stone-400 bg-stone-100 px-3 py-1.5 rounded-full hover:bg-stone-200 transition-colors flex-shrink-0">
                 Cerrar
               </button>
             </div>
 
-            {/* Contenedor scrolleable interno */}
-            <div className="overflow-y-auto flex-1 p-6 space-y-6 text-stone-800 scrollbar-none">
-              
-              {/* Bloque Estadístico */}
+            {/* Scrollable content */}
+            <div className="overflow-y-auto flex-1 p-6 space-y-6 scrollbar-none">
+
+              {/* Session stats — always real */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-stone-50 p-3.5 rounded-2xl border border-stone-100">
-                  <p className="text-[10px] uppercase text-stone-400 font-bold tracking-wide">PÁGINAS LEÍDAS</p>
-                  <p className="text-lg font-black text-stone-800 mt-0.5">+{selectedSession.pages_read} <span className="text-xs text-stone-400 font-normal">pags</span></p>
+                  <p className="text-[9px] uppercase text-stone-400 font-bold tracking-wider mb-1">Páginas hoy</p>
+                  <p className="text-2xl font-black text-stone-900 tracking-tight">
+                    +{selectedSession.pages_read}
+                  </p>
                 </div>
                 <div className="bg-stone-50 p-3.5 rounded-2xl border border-stone-100">
-                  <p className="text-[10px] uppercase text-stone-400 font-bold tracking-wide">TIEMPO DEDICADO</p>
-                  <p className="text-lg font-black text-stone-800 mt-0.5">{selectedSession.minutes_read || '--'} <span className="text-xs text-stone-400 font-normal">min</span></p>
+                  <p className="text-[9px] uppercase text-stone-400 font-bold tracking-wider mb-1">Tiempo</p>
+                  <p className="text-2xl font-black text-stone-900 tracking-tight">
+                    {selectedSession.minutes_read ? `${selectedSession.minutes_read}m` : '—'}
+                  </p>
                 </div>
               </div>
 
-              {/* Sección 1: Sinopsis */}
-              <div>
-                <h4 className="text-xs font-bold uppercase text-stone-400 tracking-wider mb-2">Sinopsis</h4>
-                <p className="text-sm text-stone-600 leading-relaxed bg-stone-50 p-4 rounded-2xl border border-stone-100">
-                  Esta es una sinopsis provisional del libro. Próximamente se sincronizará automáticamente con metadatos extendidos de la base de datos para ofrecer una inmersión completa al lector antes de interactuar con el recomendador.
-                </p>
-              </div>
+              {/* Friends who also read — real data, filtered by follows */}
+              <FriendsWhoRead
+                bookId={selectedSession.books?.book_id}
+                currentUserId={user?.id}
+              />
 
-              {/* Sección 2: Recomendador Content-Based */}
-              <div>
-                <div className="flex items-center gap-1.5 mb-2">
-                  <h4 className="text-xs font-bold uppercase text-stone-400 tracking-wider">Libros Similares</h4>
-                  <span className="text-[9px] bg-blue-50 text-blue-600 font-extrabold px-1.5 py-0.5 rounded">Content-Based AI</span>
-                </div>
-                <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none">
-                  {[1, 2, 3].map(i => (
-                    <div key={i} className="min-w-[105px] w-[105px] bg-stone-50 p-2 rounded-xl border border-stone-100 text-center">
-                      <div className="w-full h-28 bg-stone-200 rounded-md mb-1.5 flex items-center justify-center text-stone-400 text-xs">📖</div>
-                      <p className="text-[10px] font-bold text-stone-700 truncate">Libro similar {i}</p>
-                      <p className="text-[9px] text-stone-400 truncate">94% Match</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              {/* More by same author — real data from global_books */}
+              <AuthorShelf
+                author={selectedSession.books?.author}
+                currentBookId={selectedSession.books?.book_id}
+              />
 
-              {/* Sección 3: Mismo Género */}
-              <div>
-                <h4 className="text-xs font-bold uppercase text-stone-400 tracking-wider mb-2">Más de este género</h4>
-                <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none">
-                  {[1, 2, 3].map(i => (
-                    <div key={i} className="min-w-[105px] w-[105px] bg-stone-50 p-2 rounded-xl border border-stone-100 text-center">
-                      <div className="w-full h-28 bg-stone-200 rounded-md mb-1.5 flex items-center justify-center text-stone-400 text-xs">🔮</div>
-                      <p className="text-[10px] font-bold text-stone-700 truncate">Ejemplar {i}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              {/* Similar books — skeleton ready for Fase 4 content-based recommender */}
+              {/* TODO Fase 4: connect to content-based filtering engine */}
+              <ComingSoonShelf label="Libros similares" tag="Próximamente" />
 
-              {/* Sección 4: Autores Relacionados */}
-              <div className="pb-4">
-                <h4 className="text-xs font-bold uppercase text-stone-400 tracking-wider mb-2">Autores Parecidos</h4>
-                <div className="grid grid-cols-2 gap-2">
-                  {['Autor Relacionado A', 'Autor Relacionado B'].map((author, idx) => (
-                    <div key={idx} className="bg-stone-50 px-3 py-2.5 rounded-xl border border-stone-100 flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-full bg-stone-200 flex-shrink-0" />
-                      <p className="text-xs font-semibold text-stone-700 truncate">{author}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              {/* More from genre — skeleton ready for Fase 4 */}
+              {/* TODO Fase 4: query by genre filtered by user reading history */}
+              <ComingSoonShelf
+                label={`Más de ${(selectedSession.books?.genre || 'este género').replace('_', ' ')}`}
+                tag="Próximamente"
+              />
 
             </div>
 
-            {/* Footer Fijo del Panel */}
+            {/* Footer */}
             <div className="p-4 bg-white border-t border-stone-100 flex-shrink-0">
-              <button onClick={closeDetails} className="w-full bg-stone-900 text-white font-bold py-3.5 rounded-2xl shadow-md text-sm active:scale-[0.99] transition-all">
-                Volver al Feed
+              <button
+                onClick={closeDetails}
+                className="w-full bg-stone-900 text-white font-bold py-3.5 rounded-2xl text-sm active:scale-[0.99] transition-all">
+                Volver al feed
               </button>
             </div>
           </div>
         </div>
       )}
-      
-      {/* AÑADIDO: Inclusión de la Navbar global al final de la página */}
-      <Navbar active="/feed" />
 
+      <Navbar active="/feed" />
     </div>
   )
 }
