@@ -1,17 +1,68 @@
+// src/pages/AddBook.jsx
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../supabase'
 import { useNavigate } from 'react-router-dom'
 import { GENRES, getGenreStyle } from '../constants/genres'
 import Navbar from '../components/layout/Navbar'
 
-// Modo de búsqueda activo
-const MODES = { title: 'título', author: 'autor', genre: 'género' }
+const MODES = { title: 'Título', author: 'Autor', genre: 'Género' }
 
-function AddBook() {
-  const [searchMode, setSearchMode] = useState('title')  // 'title' | 'author' | 'genre'
+// ── Shared primitives ─────────────────────────────────────────────────────────
+
+const baseInput = {
+  width: '100%',
+  background: 'white',
+  border: '0.5px solid rgba(26,23,20,0.10)',
+  borderRadius: '14px',
+  padding: '13px 16px',
+  fontSize: '14px',
+  color: '#1a1714',
+  fontFamily: "'Inter', -apple-system, sans-serif",
+  outline: 'none',
+  boxSizing: 'border-box',
+  letterSpacing: '-0.01em',
+}
+
+function Input({ type = 'text', placeholder, value, onChange, autoFocus, onKeyDown }) {
+  return (
+    <input
+      type={type}
+      placeholder={placeholder}
+      value={value}
+      onChange={onChange}
+      autoFocus={autoFocus}
+      onKeyDown={onKeyDown}
+      style={baseInput}
+    />
+  )
+}
+
+function BackButton({ onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        width: '36px', height: '36px', borderRadius: '50%',
+        background: 'white', border: '0.5px solid rgba(26,23,20,0.10)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        cursor: 'pointer', color: '#9c9490', flexShrink: 0,
+      }}
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="15 18 9 12 15 6" />
+      </svg>
+    </button>
+  )
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+
+export default function AddBook() {
+  const [searchMode, setSearchMode] = useState('title')
   const [query, setQuery] = useState('')
   const [authorQuery, setAuthorQuery] = useState('')
-  const [genreFilter, setGenreFilter] = useState(null) // valor del género seleccionado como filtro
+  const [genreFilter, setGenreFilter] = useState(null)
   const [results, setResults] = useState([])
   const [searching, setSearching] = useState(false)
   const [searchNote, setSearchNote] = useState('')
@@ -26,7 +77,6 @@ function AddBook() {
   const navigate = useNavigate()
   const searchAbortRef = useRef(null)
 
-  // Dispara búsqueda automática cuando cambia el texto (debounce 500ms)
   useEffect(() => {
     const timer = setTimeout(() => {
       const q = searchMode === 'author' ? authorQuery : query
@@ -35,61 +85,44 @@ function AddBook() {
     return () => clearTimeout(timer)
   }, [query, authorQuery, searchMode])
 
-  // Búsqueda inmediata cuando se selecciona un género como filtro
   useEffect(() => {
     if (searchMode === 'genre' && genreFilter) executeSearch()
   }, [genreFilter])
 
-  // ─── helpers anti-duplicados ────────────────────────────────────────────────
+  // ── Library helpers ──────────────────────────────────────────────────────────
 
   async function addBookToLibrary(userId, bookId) {
     const { data: existing } = await supabase
-      .from('user_books')
-      .select('id, is_active')
-      .eq('user_id', userId)
-      .eq('book_id', bookId)
-      .maybeSingle()
+      .from('user_books').select('id, is_active')
+      .eq('user_id', userId).eq('book_id', bookId).maybeSingle()
 
     if (existing) {
       if (existing.is_active) return { error: 'duplicate' }
-      const { error } = await supabase
-        .from('user_books')
-        .update({ is_active: true, current_page: 0, finished: false })
-        .eq('id', existing.id)
+      const { error } = await supabase.from('user_books')
+        .update({ is_active: true, current_page: 0, finished: false }).eq('id', existing.id)
       return { error: error ? error.message : null }
     }
 
     const { error } = await supabase.from('user_books').insert({
-      user_id: userId,
-      book_id: bookId,
-      current_page: 0,
-      finished: false,
-      is_active: true,
+      user_id: userId, book_id: bookId,
+      current_page: 0, finished: false, is_active: true,
     })
     return { error: error ? error.message : null }
   }
 
   async function findExistingGlobalBook(book) {
     if (book.google_books_id) {
-      const { data } = await supabase
-        .from('global_books')
-        .select('id')
-        .eq('google_books_id', book.google_books_id)
-        .maybeSingle()
+      const { data } = await supabase.from('global_books').select('id')
+        .eq('google_books_id', book.google_books_id).maybeSingle()
       if (data) return data.id
     }
-    const { data } = await supabase
-      .from('global_books')
-      .select('id')
-      .ilike('title', book.title)
-      .ilike('author', book.author || '')
-      .maybeSingle()
+    const { data } = await supabase.from('global_books').select('id')
+      .ilike('title', book.title).ilike('author', book.author || '').maybeSingle()
     return data?.id || null
   }
 
-  // ─── fuentes de búsqueda ────────────────────────────────────────────────────
+  // ── Search sources ───────────────────────────────────────────────────────────
 
-  // Google Books: usa intitle:/inauthor: para resultados más relevantes
   async function searchGoogleBooks(googleQuery, signal) {
     try {
       const apiKey = import.meta.env.VITE_GOOGLE_BOOKS_API_KEY
@@ -98,28 +131,21 @@ function AddBook() {
         `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(googleQuery)}&maxResults=8&langRestrict=es&orderBy=relevance${keyParam}`,
         { signal }
       )
-      if (res.status === 429) {
-        setSearchNote('Google Books temporalmente limitado, usando OpenLibrary.')
-        return []
-      }
+      if (res.status === 429) { setSearchNote('Google Books temporalmente limitado, usando OpenLibrary.'); return [] }
       if (!res.ok) return []
       const data = await res.json()
       if (!data.items) return []
       return data.items
         .filter(item => {
           const info = item.volumeInfo || {}
-          // Filtra resultados sin título limpio o que parezcan documentos académicos/legales
-          return info.title && !['proceedings', 'journal', 'bulletin', 'actas', 'constitución'].some(
-            w => info.title.toLowerCase().includes(w)
-          )
+          return info.title && !['proceedings', 'journal', 'bulletin', 'actas', 'constitución']
+            .some(w => info.title.toLowerCase().includes(w))
         })
         .map(item => {
           const info = item.volumeInfo || {}
           return {
-            source: 'google',
-            google_books_id: item.id,
-            title: info.title,
-            author: info.authors?.[0] || 'Autor desconocido',
+            source: 'google', google_books_id: item.id,
+            title: info.title, author: info.authors?.[0] || 'Autor desconocido',
             pages: info.pageCount || null,
             cover: info.imageLinks?.thumbnail
               ? info.imageLinks.thumbnail.replace('http://', 'https://').replace('zoom=1', 'zoom=2')
@@ -130,7 +156,6 @@ function AddBook() {
         })
     } catch (e) {
       if (e.name === 'AbortError') return []
-      console.error('[Google Books] fallo de red:', e)
       return []
     }
   }
@@ -138,28 +163,21 @@ function AddBook() {
   async function searchOpenLibrary(olQuery, signal) {
     try {
       const res = await fetch(
-        `https://openlibrary.org/search.json?q=${encodeURIComponent(olQuery)}&limit=6`,
-        { signal }
-      )
+        `https://openlibrary.org/search.json?q=${encodeURIComponent(olQuery)}&limit=6`, { signal })
       if (!res.ok) return []
       const data = await res.json()
       return (data.docs || []).map(b => ({
-        source: 'openlibrary',
-        google_books_id: null,
-        title: b.title,
-        author: b.author_name?.[0] || 'Autor desconocido',
+        source: 'openlibrary', google_books_id: null,
+        title: b.title, author: b.author_name?.[0] || 'Autor desconocido',
         pages: b.number_of_pages_median || null,
         cover: b.cover_i ? `https://covers.openlibrary.org/b/id/${b.cover_i}-L.jpg` : null,
-        year: b.first_publish_year || null,
-        isLocal: false,
+        year: b.first_publish_year || null, isLocal: false,
       }))
     } catch (e) {
       if (e.name === 'AbortError') return []
       return []
     }
   }
-
-  // ─── motor de búsqueda central ──────────────────────────────────────────────
 
   async function executeSearch() {
     if (searchAbortRef.current) searchAbortRef.current.abort()
@@ -174,23 +192,17 @@ function AddBook() {
       let olQuery = ''
 
       if (searchMode === 'title' && query.trim().length > 2) {
-        // intitle: fuerza coincidencia en el título, evita ruido de documentos académicos
         googleQuery = `intitle:${query.trim()}`
         olQuery = query.trim()
         dbQuery = dbQuery.ilike('title', `%${query.trim()}%`)
-
       } else if (searchMode === 'author' && authorQuery.trim().length > 2) {
-        // inauthor: para encontrar todos los libros de un autor
         googleQuery = `inauthor:${authorQuery.trim()}`
         olQuery = `author:${authorQuery.trim()}`
         dbQuery = dbQuery.ilike('author', `%${authorQuery.trim()}%`)
-
       } else if (searchMode === 'genre' && genreFilter) {
-        // Búsqueda por género: solo en catálogo local (las APIs externas no tienen taxonomía fiable)
         dbQuery = dbQuery.eq('genre', genreFilter)
         const { data: localBooks } = await dbQuery
-        const flat = (localBooks || []).map(b => ({ ...b, pages: b.total_pages, cover: b.cover_url, isLocal: true }))
-        setResults(flat)
+        setResults((localBooks || []).map(b => ({ ...b, pages: b.total_pages, cover: b.cover_url, isLocal: true })))
         setSearching(false)
         return
       } else {
@@ -207,10 +219,7 @@ function AddBook() {
       if (controller.signal.aborted) return
 
       const dbResults = (localBooksResult.data || []).map(b => ({
-        ...b,
-        pages: b.total_pages,
-        cover: b.cover_url,
-        isLocal: true,
+        ...b, pages: b.total_pages, cover: b.cover_url, isLocal: true,
       }))
 
       const norm = s => (s || '').trim().toLowerCase()
@@ -219,15 +228,12 @@ function AddBook() {
       const filteredGoogle = googleResults.filter(b => {
         const key = `${norm(b.title)}|${norm(b.author)}`
         if (seenKeys.has(key)) return false
-        seenKeys.add(key)
-        return true
+        seenKeys.add(key); return true
       })
-
       const filteredOL = olResults.filter(b => {
         const key = `${norm(b.title)}|${norm(b.author)}`
         if (seenKeys.has(key)) return false
-        seenKeys.add(key)
-        return true
+        seenKeys.add(key); return true
       })
 
       setResults([...dbResults, ...filteredGoogle, ...filteredOL].slice(0, 10))
@@ -238,7 +244,7 @@ function AddBook() {
     }
   }
 
-  // ─── handlers de selección ──────────────────────────────────────────────────
+  // ── Selection handlers ───────────────────────────────────────────────────────
 
   async function handleSelect(book) {
     if (book.isLocal) {
@@ -246,8 +252,7 @@ function AddBook() {
       const { data: { user } } = await supabase.auth.getUser()
       const { error } = await addBookToLibrary(user.id, book.id)
       setLoading(false)
-      setResults([])
-      setQuery('')
+      setResults([]); setQuery('')
       if (!error) navigate('/home')
       else if (error === 'duplicate') alert('Ya tienes este libro en tu lista.')
       else alert('Hubo un error al añadir el libro.')
@@ -259,25 +264,14 @@ function AddBook() {
     setTotalPages(book.pages || '')
     setYear(book.year || '')
     setGenre(book.genre || '')
-    setResults([])
-    setQuery('')
-    setAuthorQuery('')
+    setResults([]); setQuery(''); setAuthorQuery('')
   }
 
-  function handleManual() {
-    setManual(true)
-    setSelected(null)
-    setResults([])
-  }
+  function handleManual() { setManual(true); setSelected(null); setResults([]) }
 
   function resetToSearch() {
-    setSelected(null)
-    setManual(false)
-    setTitle('')
-    setAuthor('')
-    setTotalPages('')
-    setGenre('')
-    setYear('')
+    setSelected(null); setManual(false)
+    setTitle(''); setAuthor(''); setTotalPages(''); setGenre(''); setYear('')
   }
 
   async function handleAddBook() {
@@ -296,8 +290,7 @@ function AddBook() {
     if (selected && !selected.isLocal) {
       let bookId = await findExistingGlobalBook(selected)
       if (!bookId) {
-        const { data: inserted, error } = await supabase
-          .from('global_books')
+        const { data: inserted, error } = await supabase.from('global_books')
           .insert({
             google_books_id: selected.google_books_id || null,
             title, author, genre,
@@ -306,8 +299,7 @@ function AddBook() {
             year: year ? parseInt(year) : null,
             is_verified: true,
           })
-          .select('id')
-          .single()
+          .select('id').single()
         if (error) { setLoading(false); alert('Error al guardar el libro.'); return }
         bookId = inserted.id
       }
@@ -318,15 +310,12 @@ function AddBook() {
       return
     }
 
-    // Manual → a revisión
+    // Manual → pending review
     const { error } = await supabase.from('book_requests').insert({
-      user_id: user.id,
-      title, author,
-      total_pages: parseInt(totalPages),
-      genre,
+      user_id: user.id, title, author,
+      total_pages: parseInt(totalPages), genre,
       year: year ? parseInt(year) : null,
-      cover_url: null,
-      status: 'pending',
+      cover_url: null, status: 'pending',
     })
     setLoading(false)
     if (!error) {
@@ -335,84 +324,111 @@ function AddBook() {
     }
   }
 
-  // ─── render ─────────────────────────────────────────────────────────────────
+  // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen pb-32 antialiased" style={{ background: '#f8f6f2', fontFamily: "'Inter', -apple-system, sans-serif" }}>
+    <div style={{
+      minHeight: '100vh', background: '#f8f6f2', paddingBottom: '100px',
+      fontFamily: "'Inter', -apple-system, sans-serif",
+    }}>
+
+      {/* Top blur */}
+      <div style={{
+        position: 'fixed', top: 0, left: 0, right: 0, height: '80px', zIndex: 30,
+        background: 'linear-gradient(to bottom, rgba(248,246,242,1) 0%, rgba(248,246,242,0.8) 60%, transparent 100%)',
+        backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+        maskImage: 'linear-gradient(to bottom, black 40%, transparent 100%)',
+        WebkitMaskImage: 'linear-gradient(to bottom, black 40%, transparent 100%)',
+        pointerEvents: 'none',
+      }} />
 
       {/* Header */}
-      <div className="px-5 pt-12 pb-4 flex items-center gap-3">
-        <button
-          onClick={() => navigate('/home')}
-          className="w-9 h-9 rounded-full bg-white flex items-center justify-center shadow-sm border border-stone-200/60 text-stone-500 hover:text-stone-800 transition-colors"
-        >
-          ←
-        </button>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '12px',
+        padding: '52px 20px 20px',
+      }}>
+        <BackButton onClick={() => navigate('/home')} />
         <div>
-          <h1 className="text-[22px] font-black text-stone-900 tracking-tight leading-tight">Añadir libro</h1>
-          <p className="text-stone-400 text-[13px]">Busca por título, autor o género</p>
+          <h1 style={{
+            fontSize: '22px', fontWeight: 800, color: '#1a1714',
+            letterSpacing: '-0.025em', lineHeight: 1.15,
+          }}>
+            Añadir libro
+          </h1>
+          <p style={{ fontSize: '13px', color: '#9c9490', marginTop: '2px' }}>
+            Busca por título, autor o género
+          </p>
         </div>
       </div>
 
-      {/* Solo mostramos búsqueda cuando no hay selección ni modo manual */}
+      {/* Search view */}
       {!selected && !manual && (
-        <div className="px-5 space-y-4">
+        <div style={{ padding: '0 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
-          {/* Selector de modo de búsqueda */}
-          <div className="flex bg-white rounded-2xl p-1 shadow-sm border border-stone-200/60 gap-1">
+          {/* Mode selector */}
+          <div style={{
+            display: 'flex', background: 'white', borderRadius: '16px',
+            border: '0.5px solid rgba(26,23,20,0.08)', padding: '4px', gap: '4px',
+          }}>
             {Object.entries(MODES).map(([mode, label]) => (
               <button
                 key={mode}
                 onClick={() => { setSearchMode(mode); setResults([]); setQuery(''); setAuthorQuery(''); setGenreFilter(null) }}
-                className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all ${
-                  searchMode === mode
-                    ? 'bg-stone-900 text-white shadow-sm'
-                    : 'text-stone-400 hover:text-stone-700'
-                }`}
+                style={{
+                  flex: 1, padding: '9px 4px', borderRadius: '12px',
+                  border: 'none', cursor: 'pointer',
+                  fontSize: '13px', fontWeight: 600,
+                  fontFamily: "'Inter', -apple-system, sans-serif",
+                  background: searchMode === mode ? '#1a1714' : 'transparent',
+                  color: searchMode === mode ? '#f8f6f2' : '#9c9490',
+                  transition: 'all 180ms ease',
+                }}
               >
-                {label.charAt(0).toUpperCase() + label.slice(1)}
+                {label}
               </button>
             ))}
           </div>
 
-          {/* Input de texto (título o autor) */}
+          {/* Text input */}
           {(searchMode === 'title' || searchMode === 'author') && (
-            <div className="relative">
-              <input
-                type="text"
-                placeholder={searchMode === 'title' ? 'Ej. El nombre del viento...' : 'Ej. Brandon Sanderson...'}
+            <div style={{ position: 'relative' }}>
+              <Input
+                placeholder={searchMode === 'title' ? 'Ej. El nombre del viento…' : 'Ej. Brandon Sanderson…'}
                 value={searchMode === 'title' ? query : authorQuery}
                 onChange={e => searchMode === 'title' ? setQuery(e.target.value) : setAuthorQuery(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && executeSearch()}
                 autoFocus
-                className="w-full bg-white text-stone-800 placeholder-stone-400 rounded-2xl px-4 py-3.5 text-sm outline-none border border-stone-200/60 shadow-sm focus:border-orange-300 focus:ring-2 focus:ring-orange-100 transition-all"
               />
               {searching && (
-                <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                  <div className="w-4 h-4 border-2 border-orange-400 border-t-transparent rounded-full animate-spin" />
+                <div style={{ position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)' }}>
+                  <div style={{
+                    width: '16px', height: '16px',
+                    border: '2px solid #e8622a', borderTopColor: 'transparent',
+                    borderRadius: '50%', animation: 'spin 0.7s linear infinite',
+                  }} />
                 </div>
               )}
             </div>
           )}
 
-          {/* Grid de géneros (modo género) */}
+          {/* Genre grid */}
           {searchMode === 'genre' && (
-            <div className="grid grid-cols-3 gap-2">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
               {GENRES.map(g => {
                 const Icon = g.icon
-                const isSelected = genreFilter === g.value
+                const isActive = genreFilter === g.value
                 return (
                   <button
                     key={g.value}
-                    onClick={() => setGenreFilter(isSelected ? null : g.value)}
+                    onClick={() => setGenreFilter(isActive ? null : g.value)}
                     className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-2xl text-xs font-semibold transition-all border ${
-                      isSelected
+                      isActive
                         ? `${g.badge} border-transparent shadow-sm scale-[1.02]`
                         : 'bg-white text-stone-500 border-stone-200/60 hover:border-stone-300'
                     }`}
                   >
                     <Icon size={18} strokeWidth={1.8} />
-                    <span className="text-center leading-tight">{g.label}</span>
+                    <span style={{ textAlign: 'center', lineHeight: 1.3 }}>{g.label}</span>
                   </button>
                 )
               })}
@@ -420,15 +436,26 @@ function AddBook() {
           )}
 
           {searchNote && (
-            <p className="text-amber-600 text-xs px-1">{searchNote}</p>
+            <p style={{ fontSize: '11px', color: '#d97706', paddingLeft: '2px' }}>{searchNote}</p>
           )}
 
-          {/* Resultados */}
+          {/* Genre empty state */}
+          {searchMode === 'genre' && !genreFilter && results.length === 0 && (
+            <p style={{ textAlign: 'center', fontSize: '13px', color: '#9c9490', padding: '16px 0' }}>
+              Selecciona un género para explorar el catálogo
+            </p>
+          )}
+
+          {/* Results */}
           {results.length > 0 && (
-            <div className="space-y-2.5">
-              <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider px-1">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <p style={{
+                fontSize: '9px', fontWeight: 700, letterSpacing: '0.1em',
+                textTransform: 'uppercase', color: '#9c9490', paddingLeft: '2px',
+              }}>
                 {results.length} resultado{results.length !== 1 ? 's' : ''}
               </p>
+
               {results.map((book, i) => {
                 const genreStyle = book.genre ? getGenreStyle(book.genre) : null
                 const Icon = genreStyle?.icon
@@ -436,38 +463,60 @@ function AddBook() {
                   <div
                     key={book.isLocal ? `local-${book.id}` : `${book.source}-${book.google_books_id || book.title}-${i}`}
                     onClick={() => handleSelect(book)}
-                    className="flex items-center gap-3 bg-white rounded-2xl p-3.5 border border-stone-100 shadow-sm cursor-pointer hover:shadow-md hover:border-orange-200 active:scale-[0.99] transition-all"
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '12px',
+                      background: 'white', borderRadius: '18px',
+                      border: '0.5px solid rgba(26,23,20,0.07)',
+                      padding: '12px 14px', cursor: 'pointer',
+                      boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+                      transition: 'all 150ms ease',
+                    }}
                   >
-                    {/* Portada */}
                     {book.cover ? (
-                      <img src={book.cover} alt={book.title} className="w-11 h-16 object-cover rounded-xl shadow-sm flex-shrink-0" />
+                      <img src={book.cover} alt={book.title} style={{
+                        width: '44px', height: '64px', objectFit: 'cover',
+                        borderRadius: '8px', flexShrink: 0,
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+                      }} />
                     ) : (
-                      <div className={`w-11 h-16 rounded-xl flex items-center justify-center flex-shrink-0 ${genreStyle?.badge || 'bg-stone-100 text-stone-400'}`}>
+                      <div className={`${genreStyle?.badge || 'bg-stone-100 text-stone-400'}`}
+                        style={{
+                          width: '44px', height: '64px', borderRadius: '8px',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          flexShrink: 0,
+                        }}>
                         {Icon && <Icon size={20} strokeWidth={1.8} />}
                       </div>
                     )}
-
-                    {/* Datos */}
-                    <div className="flex-1 min-w-0">
-                      <p className="font-black text-stone-900 text-sm truncate leading-tight">{book.title}</p>
-                      <p className="text-stone-400 text-xs font-medium truncate mt-0.5">{book.author}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        {book.pages && (
-                          <span className="text-stone-400 text-[10px]">{book.pages} págs.</span>
-                        )}
-                        {book.year && (
-                          <span className="text-stone-400 text-[10px]">· {book.year}</span>
-                        )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{
+                        fontSize: '14px', fontWeight: 800, color: '#1a1714',
+                        letterSpacing: '-0.01em', lineHeight: 1.2,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {book.title}
+                      </p>
+                      <p style={{ fontSize: '12px', color: '#9c9490', fontWeight: 500, marginTop: '2px',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {book.author}
+                      </p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
+                        {book.pages && <span style={{ fontSize: '10px', color: '#b8b4b0' }}>{book.pages} págs.</span>}
+                        {book.year && <span style={{ fontSize: '10px', color: '#b8b4b0' }}>· {book.year}</span>}
                       </div>
                     </div>
-
-                    {/* Badge */}
                     {book.isLocal ? (
-                      <span className="flex-shrink-0 bg-emerald-50 text-emerald-600 text-[10px] font-bold px-2 py-1 rounded-full border border-emerald-100">
+                      <span style={{
+                        fontSize: '10px', fontWeight: 700, color: '#16a34a',
+                        background: '#f0faf4', border: '0.5px solid rgba(22,163,74,0.2)',
+                        padding: '3px 8px', borderRadius: '99px', flexShrink: 0,
+                      }}>
                         Ya en Folio
                       </span>
                     ) : (
-                      <svg className="flex-shrink-0 text-stone-300" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                        stroke="#b8b4b0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                        style={{ flexShrink: 0 }}>
                         <polyline points="9 18 15 12 9 6"/>
                       </svg>
                     )}
@@ -475,164 +524,192 @@ function AddBook() {
                 )
               })}
 
+              {/* Not found CTA */}
               <button
                 onClick={handleManual}
-                className="w-full flex items-center justify-between bg-white hover:bg-stone-50 active:scale-[0.99] text-stone-700 rounded-2xl px-5 py-4 border border-stone-200/60 shadow-sm transition-all"
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  background: 'white', borderRadius: '18px',
+                  border: '0.5px solid rgba(26,23,20,0.07)',
+                  padding: '14px 16px', cursor: 'pointer', width: '100%',
+                  boxSizing: 'border-box',
+                }}
               >
-                <div className="text-left">
-                  <p className="text-sm font-bold leading-tight">No encuentro mi libro</p>
-                  <p className="text-stone-400 text-xs mt-0.5">Añádelo manualmente</p>
+                <div style={{ textAlign: 'left' }}>
+                  <p style={{ fontSize: '13px', fontWeight: 700, color: '#1a1714', letterSpacing: '-0.01em' }}>
+                    No encuentro mi libro
+                  </p>
+                  <p style={{ fontSize: '11px', color: '#9c9490', marginTop: '2px' }}>Añádelo manualmente</p>
                 </div>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-stone-300 flex-shrink-0">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                  stroke="#b8b4b0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="9 18 15 12 9 6"/>
                 </svg>
               </button>
             </div>
           )}
 
-          {/* Estado vacío cuando no hay resultados */}
+          {/* Empty results */}
           {results.length === 0 && !searching && (
             (searchMode === 'title' && query.length > 2) ||
             (searchMode === 'author' && authorQuery.length > 2)
           ) && (
-            <div className="space-y-2.5">
-              <div className="bg-white rounded-2xl p-6 text-center border border-stone-100 shadow-sm">
-                <p className="text-stone-500 text-sm font-semibold">Sin resultados para "{searchMode === 'title' ? query : authorQuery}"</p>
-                <p className="text-stone-300 text-xs mt-1">Prueba con otro término o añádelo tú mismo</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{
+                background: 'white', borderRadius: '18px',
+                border: '0.5px solid rgba(26,23,20,0.07)',
+                padding: '24px', textAlign: 'center',
+              }}>
+                <p style={{ fontSize: '13px', fontWeight: 700, color: '#1a1714' }}>
+                  Sin resultados para "{searchMode === 'title' ? query : authorQuery}"
+                </p>
+                <p style={{ fontSize: '11px', color: '#9c9490', marginTop: '4px' }}>
+                  Prueba con otro término o añádelo manualmente
+                </p>
               </div>
               <button
                 onClick={handleManual}
-                className="w-full flex items-center justify-between bg-stone-900 hover:bg-stone-800 active:scale-[0.99] text-white rounded-2xl px-5 py-4 shadow-sm transition-all"
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  background: '#1a1714', borderRadius: '18px', border: 'none',
+                  padding: '14px 16px', cursor: 'pointer', width: '100%', boxSizing: 'border-box',
+                }}
               >
-                <div className="text-left">
-                  <p className="text-sm font-bold leading-tight">Añadir manualmente</p>
-                  <p className="text-stone-400 text-xs mt-0.5">Rellena los datos tú mismo</p>
+                <div style={{ textAlign: 'left' }}>
+                  <p style={{ fontSize: '13px', fontWeight: 700, color: '#f8f6f2', letterSpacing: '-0.01em' }}>
+                    Añadir manualmente
+                  </p>
+                  <p style={{ fontSize: '11px', color: 'rgba(248,246,242,0.5)', marginTop: '2px' }}>
+                    Rellena los datos tú mismo
+                  </p>
                 </div>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-stone-400 flex-shrink-0">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                  stroke="rgba(248,246,242,0.5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="9 18 15 12 9 6"/>
                 </svg>
               </button>
             </div>
           )}
-
-          {/* Estado vacío para modo género sin selección */}
-          {searchMode === 'genre' && !genreFilter && results.length === 0 && (
-            <p className="text-center text-stone-400 text-sm py-4">Selecciona un género para explorar tu catálogo</p>
-          )}
         </div>
       )}
 
-      {/* ─── Formulario de confirmación / manual ─────────────────────────────── */}
+      {/* Confirmation / manual form */}
       {(selected || manual) && (
-        <div className="px-5 space-y-3">
+        <div style={{ padding: '0 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
 
-          {/* Portada seleccionada */}
           {selected?.cover && (
-            <div className="flex justify-center mb-6">
-              <div className="relative">
-                <img src={selected.cover} alt={title} className="w-28 rounded-2xl shadow-xl" />
-                <div className="absolute inset-0 rounded-2xl ring-1 ring-black/10" />
+            <div style={{ display: 'flex', justifyContent: 'center', paddingBottom: '8px' }}>
+              <div style={{
+                borderRadius: '12px', overflow: 'hidden',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.14)',
+              }}>
+                <img src={selected.cover} alt={title}
+                  style={{ width: '100px', display: 'block' }} />
               </div>
             </div>
           )}
 
-          {/* Contexto de lo que se está confirmando */}
           {selected && (
-            <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm mb-1">
-              <p className="text-[11px] text-stone-400 font-semibold uppercase tracking-wider mb-1">Confirma los datos</p>
-              <p className="font-black text-stone-900 text-base leading-tight">{selected.title}</p>
-              <p className="text-stone-400 text-sm mt-0.5">{selected.author}</p>
+            <div style={{
+              background: 'white', borderRadius: '16px',
+              border: '0.5px solid rgba(26,23,20,0.07)', padding: '14px 16px',
+            }}>
+              <p style={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.1em',
+                textTransform: 'uppercase', color: '#9c9490', marginBottom: '4px' }}>
+                Confirma los datos
+              </p>
+              <p style={{ fontSize: '15px', fontWeight: 800, color: '#1a1714', letterSpacing: '-0.015em' }}>
+                {selected.title}
+              </p>
+              <p style={{ fontSize: '12px', color: '#9c9490', marginTop: '2px' }}>{selected.author}</p>
             </div>
           )}
 
           {manual && (
-            <div className="bg-orange-50 rounded-2xl p-3.5 border border-orange-100 mb-1">
-              <p className="text-orange-700 text-xs font-semibold">
+            <div style={{
+              background: '#fdf8f0', borderRadius: '14px',
+              border: '0.5px solid rgba(232,98,42,0.15)', padding: '12px 14px',
+            }}>
+              <p style={{ fontSize: '12px', fontWeight: 600, color: '#c2651a' }}>
                 📋 Este libro se enviará a revisión antes de añadirse a tu lista.
               </p>
             </div>
           )}
 
-          {/* Campos */}
-          <input
-            type="text"
-            placeholder="Título"
-            value={title}
-            onChange={e => setTitle(e.target.value)}
-            className="w-full bg-white text-stone-800 placeholder-stone-400 rounded-2xl px-4 py-3.5 text-sm outline-none border border-stone-200/60 shadow-sm focus:border-orange-300 focus:ring-2 focus:ring-orange-100"
-          />
-          <input
-            type="text"
-            placeholder="Autor"
-            value={author}
-            onChange={e => setAuthor(e.target.value)}
-            className="w-full bg-white text-stone-800 placeholder-stone-400 rounded-2xl px-4 py-3.5 text-sm outline-none border border-stone-200/60 shadow-sm focus:border-orange-300 focus:ring-2 focus:ring-orange-100"
-          />
-          <div className="flex gap-2">
-            <input
-              type="number"
-              placeholder="Páginas"
-              value={totalPages}
-              onChange={e => setTotalPages(e.target.value)}
-              className="flex-1 bg-white text-stone-800 placeholder-stone-400 rounded-2xl px-4 py-3.5 text-sm outline-none border border-stone-200/60 shadow-sm focus:border-orange-300 focus:ring-2 focus:ring-orange-100"
-            />
-            <input
-              type="number"
-              placeholder="Año (opcional)"
-              value={year}
-              onChange={e => setYear(e.target.value)}
-              className="flex-1 bg-white text-stone-800 placeholder-stone-400 rounded-2xl px-4 py-3.5 text-sm outline-none border border-stone-200/60 shadow-sm focus:border-orange-300 focus:ring-2 focus:ring-orange-100"
-            />
+          <Input placeholder="Título" value={title} onChange={e => setTitle(e.target.value)} />
+          <Input placeholder="Autor" value={author} onChange={e => setAuthor(e.target.value)} />
+
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <Input type="number" placeholder="Páginas" value={totalPages}
+              onChange={e => setTotalPages(e.target.value)} />
+            <Input type="number" placeholder="Año (opcional)" value={year}
+              onChange={e => setYear(e.target.value)} />
           </div>
 
-          {/* Selector de género */}
+          {/* Genre selector */}
           <div>
-            <p className="text-stone-400 text-xs font-semibold uppercase tracking-wider mb-2.5 px-1">Género</p>
-            <div className="grid grid-cols-3 gap-2">
+            <p style={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.1em',
+              textTransform: 'uppercase', color: '#9c9490', marginBottom: '10px', paddingLeft: '2px' }}>
+              Género
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
               {GENRES.map(g => {
                 const Icon = g.icon
-                const isSelected = genre === g.value
+                const isActive = genre === g.value
                 return (
                   <button
                     key={g.value}
                     onClick={() => setGenre(g.value)}
                     className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-2xl text-xs font-semibold transition-all border ${
-                      isSelected
+                      isActive
                         ? `${g.badge} border-transparent shadow-sm`
                         : 'bg-white text-stone-500 border-stone-200/60 hover:border-stone-300'
                     }`}
                   >
                     <Icon size={18} strokeWidth={1.8} />
-                    <span className="text-center leading-tight">{g.label}</span>
+                    <span style={{ textAlign: 'center', lineHeight: 1.3 }}>{g.label}</span>
                   </button>
                 )
               })}
             </div>
           </div>
 
-          {/* Acciones */}
-          <div className="flex gap-2 pt-1">
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: '8px', paddingTop: '4px' }}>
             <button
               onClick={resetToSearch}
-              className="flex-1 bg-white text-stone-500 font-semibold rounded-2xl py-3.5 text-sm border border-stone-200/60 hover:border-stone-300 transition-all"
+              style={{
+                flex: 1, background: 'white', color: '#9c9490',
+                border: '0.5px solid rgba(26,23,20,0.10)', borderRadius: '14px',
+                padding: '14px', fontSize: '13px', fontWeight: 700,
+                fontFamily: "'Inter', -apple-system, sans-serif", cursor: 'pointer',
+              }}
             >
               ← Volver
             </button>
             <button
               onClick={handleAddBook}
               disabled={loading || !genre || !title || !author || !totalPages}
-              className="flex-1 bg-stone-900 hover:bg-stone-800 text-white font-bold rounded-2xl py-3.5 text-sm transition-all disabled:opacity-40 shadow-sm"
+              style={{
+                flex: 1,
+                background: loading || !genre || !title || !author || !totalPages ? '#e8e4df' : '#1a1714',
+                color: loading || !genre || !title || !author || !totalPages ? '#9c9490' : '#f8f6f2',
+                border: 'none', borderRadius: '14px',
+                padding: '14px', fontSize: '13px', fontWeight: 700,
+                fontFamily: "'Inter', -apple-system, sans-serif",
+                cursor: loading || !genre || !title || !author || !totalPages ? 'not-allowed' : 'pointer',
+                transition: 'all 200ms ease',
+              }}
             >
-              {loading ? 'Guardando...' : selected ? 'Añadir a mi lista' : 'Enviar para revisión'}
+              {loading ? 'Guardando…' : selected ? 'Añadir a mi lista' : 'Enviar para revisión'}
             </button>
           </div>
         </div>
       )}
 
-      <Navbar active="/feed" />
-
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      {/* FIX: active="/home" — comes from Mis libros, not Feed */}
+      <Navbar active="/home" />
     </div>
   )
 }
-
-export default AddBook
