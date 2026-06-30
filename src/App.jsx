@@ -1,3 +1,4 @@
+// src/App.jsx
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Login from './pages/Login'
 import Feed from './pages/Feed'
@@ -11,6 +12,7 @@ import Stats from './pages/Stats'
 import BookNotes from './pages/BookNotes'
 import PublicProfile from './pages/PublicProfile'
 import Biblioteca from './pages/Biblioteca'
+import Descubrir from './pages/Descubrir'
 
 function App() {
   return (
@@ -28,6 +30,7 @@ function App() {
         <Route path="/admin" element={<Admin />} />
         <Route path="/user/:id" element={<PublicProfile />} />
         <Route path="/biblioteca" element={<Biblioteca />} />
+        <Route path="/descubrir" element={<Descubrir />} />
       </Routes>
     </BrowserRouter>
   )

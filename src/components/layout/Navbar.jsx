@@ -1,21 +1,15 @@
 // src/components/layout/Navbar.jsx
 // ─────────────────────────────────────────────────────────────────────────────
 // The single Navbar for all post-login screens.
-// Replaces the 5 inline copies previously duplicated across pages.
-//
-// Usage:
-//   <Navbar active="/feed" />
-//
-// The `active` prop should match the current route exactly.
+// 5 tabs: Inicio, Descubrir, Mis libros, Stats, Biblioteca
 // ─────────────────────────────────────────────────────────────────────────────
 import { useNavigate } from 'react-router-dom'
 
 // ── Icons ────────────────────────────────────────────────────────────────────
-// Thin-stroke, rounded — consistent weight across all four tabs.
 
 function IconHome({ filled }) {
   return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none"
       stroke="currentColor" strokeWidth={filled ? 2.2 : 1.7}
       strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"
@@ -25,9 +19,22 @@ function IconHome({ filled }) {
   )
 }
 
+function IconCompass({ filled }) {
+  return (
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth={filled ? 2.2 : 1.7}
+      strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9"
+        fill={filled ? 'currentColor' : 'none'} fillOpacity={filled ? 0.1 : 0} />
+      <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"
+        fill={filled ? 'currentColor' : 'none'} fillOpacity={filled ? 0.25 : 0} />
+    </svg>
+  )
+}
+
 function IconBooks({ filled }) {
   return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none"
       stroke="currentColor" strokeWidth={filled ? 2.2 : 1.7}
       strokeLinecap="round" strokeLinejoin="round">
       <path d="M4 19.5A2.5 2.5 0 016.5 17H20"
@@ -46,7 +53,7 @@ function IconBooks({ filled }) {
 
 function IconStats({ filled }) {
   return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none"
       stroke="currentColor" strokeWidth={filled ? 2.2 : 1.7}
       strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="12" width="4" height="8" rx="1"
@@ -68,10 +75,9 @@ function IconStats({ filled }) {
 
 function IconLibrary({ filled }) {
   return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none"
       stroke="currentColor" strokeWidth={filled ? 2.2 : 1.7}
       strokeLinecap="round" strokeLinejoin="round">
-      {/* Three book spines side by side */}
       <rect x="3"  y="4" width="4" height="16" rx="1"
         fill={filled ? 'currentColor' : 'none'} fillOpacity={filled ? 0.9 : 0} />
       <rect x="9"  y="2" width="4" height="18" rx="1"
@@ -92,29 +98,14 @@ function IconLibrary({ filled }) {
   )
 }
 
-// ── Nav items definition ─────────────────────────────────────────────────────
+// ── Nav items ─────────────────────────────────────────────────────────────────
 
 const NAV_ITEMS = [
-  {
-    path:  '/feed',
-    label: 'Inicio',
-    Icon:  IconHome,
-  },
-  {
-    path:  '/home',
-    label: 'Mis libros',
-    Icon:  IconBooks,
-  },
-  {
-    path:  '/stats',
-    label: 'Stats',
-    Icon:  IconStats,
-  },
-  {
-    path:  '/biblioteca',
-    label: 'Biblioteca',
-    Icon:  IconLibrary,
-  },
+  { path: '/feed',       label: 'Inicio',     Icon: IconHome    },
+  { path: '/descubrir',  label: 'Descubrir',  Icon: IconCompass },
+  { path: '/home',       label: 'Mis libros', Icon: IconBooks   },
+  { path: '/stats',      label: 'Stats',      Icon: IconStats   },
+  { path: '/biblioteca', label: 'Biblioteca', Icon: IconLibrary },
 ]
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -124,7 +115,6 @@ export default function Navbar({ active }) {
 
   return (
     <>
-      {/* Inline styles — no Tailwind dependencies for the glass pill */}
       <style>{`
         .folio-nav {
           position: fixed;
@@ -134,8 +124,8 @@ export default function Navbar({ active }) {
           z-index: 50;
           display: flex;
           align-items: center;
-          gap: 2px;
-          padding: 6px 8px;
+          gap: 0px;
+          padding: 6px 6px;
           border-radius: 9999px;
           background: rgba(248, 246, 242, 0.78);
           backdrop-filter: blur(20px) saturate(1.8);
@@ -145,7 +135,7 @@ export default function Navbar({ active }) {
             0 4px 24px rgba(0, 0, 0, 0.08),
             0 1px 4px rgba(0, 0, 0, 0.05),
             inset 0 1px 0 rgba(255, 255, 255, 0.8);
-          width: min(360px, 88vw);
+          width: min(380px, 94vw);
         }
 
         .folio-nav-btn {
@@ -154,8 +144,10 @@ export default function Navbar({ active }) {
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          gap: 3px;
-          padding: 7px 4px 6px;
+          gap: 4px;
+          /* FIX: more bottom padding so the dot indicator has its own space
+             and never overlaps the label text below it */
+          padding: 8px 2px 9px;
           border: none;
           background: transparent;
           border-radius: 9999px;
@@ -166,39 +158,37 @@ export default function Navbar({ active }) {
             transform 140ms cubic-bezier(0.34, 1.56, 0.64, 1);
           -webkit-tap-highlight-color: transparent;
           position: relative;
-          overflow: hidden;
+          overflow: visible;
         }
 
         .folio-nav-btn:active {
           transform: scale(0.91);
         }
 
-        /* Inactive state */
         .folio-nav-btn {
           color: #9c9490;
         }
 
-        /* Active state */
         .folio-nav-btn.is-active {
           color: #e8622a;
           background: rgba(232, 98, 42, 0.07);
         }
 
-        /* Active indicator dot */
+        /* FIX: dot now sits BELOW the label, outside the button's content box,
+           instead of overlapping it at bottom:5px */
         .folio-nav-btn.is-active::after {
           content: '';
           position: absolute;
-          bottom: 5px;
+          bottom: 1px;
           left: 50%;
           transform: translateX(-50%);
           width: 3px;
           height: 3px;
           border-radius: 9999px;
           background: #e8622a;
-          opacity: 0.6;
+          opacity: 0.7;
         }
 
-        /* Icon container — handles the scale on active */
         .folio-nav-icon {
           display: flex;
           align-items: center;
@@ -210,16 +200,21 @@ export default function Navbar({ active }) {
           transform: scale(1.08);
         }
 
-        /* Label */
         .folio-nav-label {
           font-family: 'Inter', -apple-system, sans-serif;
-          font-size: 8.5px;
+          font-size: 7.5px;
           font-weight: 600;
-          letter-spacing: 0.04em;
+          letter-spacing: 0.03em;
           line-height: 1;
           text-transform: uppercase;
-          /* prevent layout shift between active/inactive */
           min-width: 0;
+          white-space: nowrap;
+        }
+
+        /* Narrow screens: shrink label further instead of wrapping/overlapping */
+        @media (max-width: 360px) {
+          .folio-nav-label { font-size: 6.8px; }
+          .folio-nav-btn { padding: 7px 1px 8px; }
         }
       `}</style>
 

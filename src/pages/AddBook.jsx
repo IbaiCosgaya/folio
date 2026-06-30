@@ -74,6 +74,7 @@ export default function AddBook() {
   const [genre, setGenre] = useState('')
   const [loading, setLoading] = useState(false)
   const [year, setYear] = useState('')
+  const [description, setDescription] = useState('')
   const navigate = useNavigate()
   const searchAbortRef = useRef(null)
 
@@ -151,6 +152,7 @@ export default function AddBook() {
               ? info.imageLinks.thumbnail.replace('http://', 'https://').replace('zoom=1', 'zoom=2')
               : null,
             year: info.publishedDate ? parseInt(info.publishedDate.slice(0, 4)) : null,
+            description: info.description || null,
             isLocal: false,
           }
         })
@@ -171,7 +173,9 @@ export default function AddBook() {
         title: b.title, author: b.author_name?.[0] || 'Autor desconocido',
         pages: b.number_of_pages_median || null,
         cover: b.cover_i ? `https://covers.openlibrary.org/b/id/${b.cover_i}-L.jpg` : null,
-        year: b.first_publish_year || null, isLocal: false,
+        year: b.first_publish_year || null,
+        description: b.first_sentence?.[0] || null,
+        isLocal: false,
       }))
     } catch (e) {
       if (e.name === 'AbortError') return []
@@ -264,6 +268,7 @@ export default function AddBook() {
     setTotalPages(book.pages || '')
     setYear(book.year || '')
     setGenre(book.genre || '')
+    setDescription(book.description || '')
     setResults([]); setQuery(''); setAuthorQuery('')
   }
 
@@ -271,7 +276,7 @@ export default function AddBook() {
 
   function resetToSearch() {
     setSelected(null); setManual(false)
-    setTitle(''); setAuthor(''); setTotalPages(''); setGenre(''); setYear('')
+    setTitle(''); setAuthor(''); setTotalPages(''); setGenre(''); setYear(''); setDescription('')
   }
 
   async function handleAddBook() {
@@ -297,6 +302,7 @@ export default function AddBook() {
             cover_url: selected.cover || null,
             total_pages: parseInt(totalPages),
             year: year ? parseInt(year) : null,
+            description: description.trim() || null,
             is_verified: true,
           })
           .select('id').single()
@@ -315,6 +321,7 @@ export default function AddBook() {
       user_id: user.id, title, author,
       total_pages: parseInt(totalPages), genre,
       year: year ? parseInt(year) : null,
+      description: description.trim() || null,
       cover_url: null, status: 'pending',
     })
     setLoading(false)
@@ -644,6 +651,34 @@ export default function AddBook() {
               onChange={e => setTotalPages(e.target.value)} />
             <Input type="number" placeholder="Año (opcional)" value={year}
               onChange={e => setYear(e.target.value)} />
+          </div>
+
+          {/* Sinopsis — auto-rellenada desde Google Books cuando está disponible,
+              editable manualmente como fallback */}
+          <div>
+            <p style={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.1em',
+              textTransform: 'uppercase', color: '#9c9490', marginBottom: '6px', paddingLeft: '2px' }}>
+              Sinopsis <span style={{ opacity: 0.5, fontWeight: 500 }}>· Opcional</span>
+            </p>
+            <textarea
+              placeholder="Breve sinopsis del libro…"
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              rows={4}
+              style={{
+                width: '100%', background: 'white',
+                border: '0.5px solid rgba(26,23,20,0.10)', borderRadius: '14px',
+                padding: '13px 16px', fontSize: '13px', color: '#1a1714',
+                lineHeight: 1.6, fontFamily: "'Inter', -apple-system, sans-serif",
+                outline: 'none', resize: 'none', boxSizing: 'border-box',
+                letterSpacing: '-0.005em',
+              }}
+            />
+            {selected?.description && description === selected.description && (
+              <p style={{ fontSize: '10px', color: '#16a34a', marginTop: '5px', fontWeight: 600, paddingLeft: '2px' }}>
+                ✓ Autocompletada desde Google Books — puedes editarla
+              </p>
+            )}
           </div>
 
           {/* Genre selector */}
