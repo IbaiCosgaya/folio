@@ -13,6 +13,7 @@ import BookNotes from './pages/BookNotes'
 import PublicProfile from './pages/PublicProfile'
 import Biblioteca from './pages/Biblioteca'
 import Descubrir from './pages/Descubrir'
+import Onboarding from './pages/Onboarding'
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/feed" element={<Feed />} />
         <Route path="/home" element={<Home />} />
         <Route path="/stats" element={<Stats />} />
